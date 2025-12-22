@@ -1,0 +1,94 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import ParkingSpots from './pages/ParkingSpots';
+import Profile from './pages/Profile';
+import Reservations from './pages/Reservations';
+import ForgotPassword from './pages/ForgotPassword';
+import NotFound from './pages/NotFound';
+import './App.css';
+
+// Protected Route Component
+const ProtectedRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  return token ? children : <Navigate to="/login" />;
+};
+
+// Public Only Route (for login/register when already logged in)
+const PublicOnlyRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  return !token ? children : <Navigate to="/" />;
+};
+
+function App() {
+  return (
+    <Router>
+      <div className="app">
+        <Navbar />
+        
+        <main className="main-content">
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/parking" element={<ParkingSpots />} />
+            
+            {/* Public Only Routes (cannot access when logged in) */}
+            <Route 
+              path="/login" 
+              element={
+                <PublicOnlyRoute>
+                  <Login />
+                </PublicOnlyRoute>
+              } 
+            />
+            <Route 
+              path="/register" 
+              element={
+                <PublicOnlyRoute>
+                  <Register />
+                </PublicOnlyRoute>
+              } 
+            />
+            <Route 
+              path="/forgot-password" 
+              element={
+                <PublicOnlyRoute>
+                  <ForgotPassword />
+                </PublicOnlyRoute>
+              } 
+            />
+            
+            {/* Protected Routes */}
+            <Route 
+              path="/profile" 
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/reservations" 
+              element={
+                <ProtectedRoute>
+                  <Reservations />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* 404 Route */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </main>
+        
+        <Footer />
+      </div>
+    </Router>
+  );
+}
+
+export default App;

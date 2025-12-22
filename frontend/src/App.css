@@ -1,0 +1,593 @@
+/* src/App.css - Black & Green Theme */
+
+:root {
+  --primary-black: #0a0a0a;
+  --dark-black: #000000;
+  --light-black: #1a1a1a;
+  --card-black: #121212;
+  --primary-green: #10b981;
+  --light-green: #34d399;
+  --dark-green: #059669;
+  --accent-blue: #3b82f6;
+  --gray-light: #f8fafc;
+  --gray-medium: #94a3b8;
+  --gray-dark: #475569;
+  --border-radius: 8px;
+  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'Roboto', sans-serif;
+  background-color: var(--primary-black);
+  color: var(--gray-light);
+  min-height: 100vh;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+/* Auth Styles */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+  background-color: var(--dark-black);
+}
+
+.auth-card {
+  background: var(--card-black);
+  padding: 40px;
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.auth-card h2 {
+  text-align: center;
+  color: var(--gray-light);
+  margin-bottom: 10px;
+  font-weight: 600;
+  font-size: 1.5rem;
+}
+
+.subtitle {
+  text-align: center;
+  color: var(--gray-medium);
+  margin-bottom: 30px;
+  font-size: 0.95rem;
+}
+
+.form-group {
+  margin-bottom: 24px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--gray-medium);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--gray-dark);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: var(--gray-light);
+  transition: var(--transition);
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--primary-green);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+button {
+  width: 100%;
+  padding: 14px;
+  background: var(--primary-green);
+  color: var(--dark-black);
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  letter-spacing: 0.5px;
+}
+
+button:hover:not(:disabled) {
+  background: var(--light-green);
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  text-align: center;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  font-size: 0.9rem;
+}
+
+.auth-link {
+  text-align: center;
+  margin-top: 24px;
+  color: var(--gray-medium);
+  font-size: 0.9rem;
+}
+
+.auth-link a {
+  color: var(--primary-green);
+  text-decoration: none;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.auth-link a:hover {
+  color: var(--light-green);
+}
+
+/* Dashboard Styles */
+.dashboard {
+  min-height: 100vh;
+  background: var(--primary-black);
+}
+
+.dashboard-header {
+  background: var(--card-black);
+  padding: 20px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dashboard-header h1 {
+  color: var(--gray-light);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.logout-btn {
+  width: auto;
+  padding: 8px 20px;
+  background: transparent;
+  color: var(--gray-medium);
+  border: 1px solid var(--gray-dark);
+}
+
+.logout-btn:hover {
+  background: transparent;
+  border-color: var(--primary-green);
+  color: var(--primary-green);
+}
+
+.dashboard-content {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  padding: 30px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.parking-section h2,
+.reservations-section h2 {
+  color: var(--gray-light);
+  margin-bottom: 20px;
+  font-weight: 600;
+  font-size: 1.25rem;
+  position: relative;
+  padding-bottom: 10px;
+}
+
+.parking-section h2::after,
+.reservations-section h2::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 40px;
+  height: 2px;
+  background: var(--primary-green);
+}
+
+/* Parking Spots Grid */
+.spots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.parking-spot {
+  background: var(--card-black);
+  border-radius: var(--border-radius);
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.parking-spot:hover {
+  border-color: rgba(16, 185, 129, 0.3);
+  transform: translateY(-2px);
+}
+
+.parking-spot::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+}
+
+.parking-spot.available::before {
+  background: var(--primary-green);
+}
+
+.parking-spot.reserved::before {
+  background: var(--accent-blue);
+}
+
+.parking-spot.occupied::before {
+  background: var(--gray-medium);
+}
+
+.spot-number {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--gray-light);
+  margin-bottom: 8px;
+}
+
+.spot-type {
+  font-size: 0.8rem;
+  color: var(--gray-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 4px 0;
+}
+
+.spot-status {
+  font-size: 0.85rem;
+  margin: 8px 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.parking-spot.available .spot-status {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--primary-green);
+}
+
+.parking-spot.reserved .spot-status {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent-blue);
+}
+
+.parking-spot.occupied .spot-status {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--gray-medium);
+}
+
+.reserve-btn {
+  margin-top: 12px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+/* Reservations Styles */
+.reservations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reservation-card {
+  background: var(--card-black);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: var(--transition);
+}
+
+.reservation-card:hover {
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.reservation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.spot-badge {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--primary-green);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.status {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.status.reserved {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent-blue);
+}
+
+.status.checked-in {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--primary-green);
+}
+
+.status.completed {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--gray-medium);
+}
+
+.reservation-details p {
+  margin: 6px 0;
+  color: var(--gray-medium);
+  font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+.reservation-details strong {
+  color: var(--gray-light);
+  font-weight: 500;
+}
+
+.qr-code {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-family: monospace;
+  text-align: center;
+  color: var(--gray-light);
+  font-size: 0.85rem;
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: var(--card-black);
+  padding: 32px;
+  border-radius: var(--border-radius);
+  max-width: 500px;
+  width: 90%;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+}
+
+.modal-content h2 {
+  color: var(--gray-light);
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+.modal-content p {
+  color: var(--gray-medium);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.modal-actions button {
+  flex: 1;
+}
+
+.modal-actions button:first-child {
+  background: transparent;
+  border: 1px solid var(--gray-dark);
+  color: var(--gray-medium);
+}
+
+.modal-actions button:first-child:hover {
+  border-color: var(--gray-medium);
+  color: var(--gray-light);
+}
+
+/* Loading */
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 1rem;
+  color: var(--gray-medium);
+  background: var(--dark-black);
+}
+
+.loading::after {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--gray-dark);
+  border-top-color: var(--primary-green);
+  border-radius: 50%;
+  margin-left: 12px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .dashboard-content {
+    grid-template-columns: 1fr;
+    max-width: 800px;
+  }
+}
+
+@media (max-width: 768px) {
+  .spots-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+  
+  .dashboard-header {
+    padding: 16px 20px;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .dashboard-header h1 {
+    font-size: 1.25rem;
+  }
+  
+  .logout-btn {
+    align-self: flex-end;
+  }
+  
+  .dashboard-content {
+    padding: 20px;
+    gap: 20px;
+  }
+  
+  .auth-card {
+    padding: 30px 24px;
+  }
+  
+  .modal-content {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .spots-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .dashboard-header {
+    padding: 12px 16px;
+  }
+  
+  .dashboard-content {
+    padding: 16px;
+  }
+  
+  .reservation-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .modal-actions {
+    flex-direction: column;
+  }
+}
+
+/* Utility Classes */
+.text-green {
+  color: var(--primary-green);
+}
+
+.text-gray {
+  color: var(--gray-medium);
+}
+
+.bg-card {
+  background: var(--card-black);
+}
+
+.border-green {
+  border-color: var(--primary-green) !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.parking-spot,
+.reservation-card,
+.auth-card {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gray-dark);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-medium);
+}
