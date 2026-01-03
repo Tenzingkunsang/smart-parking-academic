@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import './ParkingSpots.css';
 
 const API_URL = 'http://localhost:5001/api';
 
@@ -16,6 +17,10 @@ const ParkingSpots = () => {
     const token = localStorage.getItem('token');
     setIsLoggedIn(!!token);
     fetchSpots();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(fetchSpots, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchSpots = async () => {
@@ -25,8 +30,7 @@ const ParkingSpots = () => {
         setSpots(res.data.data);
       }
     } catch (error) {
-      console.error('Error:', error);
-      alert('Failed to load parking spots');
+      console.error('Error fetching spots:', error);
     } finally {
       setLoading(false);
     }
@@ -34,7 +38,7 @@ const ParkingSpots = () => {
 
   const handleReserve = async (spot) => {
     if (!isLoggedIn) {
-      alert('Please login to reserve a parking spot');
+      alert('Please login to reserve a spot 🔒');
       navigate('/login');
       return;
     }
@@ -48,7 +52,7 @@ const ParkingSpots = () => {
       );
 
       if (res.data.success) {
-        alert(`Spot #${spot.spotNumber} reserved successfully!`);
+        alert(`Success! Spot #${spot.spotNumber} reserved.`);
         fetchSpots();
         setSelectedSpot(null);
       }
@@ -57,14 +61,14 @@ const ParkingSpots = () => {
     }
   };
 
-  const getSpotColor = (spot) => {
-    if (spot.isOccupied) return 'occupied';
-    if (spot.isReserved) return 'reserved';
-    return 'available';
+  const getStatusClass = (spot) => {
+    if (spot.isOccupied) return 'status-occupied';
+    if (spot.isReserved) return 'status-reserved';
+    return 'status-available';
   };
 
-  const getVehicleIcon = (type) => {
-    switch(type) {
+  const getIcon = (type) => {
+    switch (type) {
       case 'motorcycle': return '🏍️';
       case 'disabled': return '♿';
       case 'electric': return '⚡';
@@ -73,145 +77,91 @@ const ParkingSpots = () => {
   };
 
   if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <p>Loading parking spots...</p>
-      </div>
-    );
+    return <div className="loading-screen">Loading Parking System...</div>;
   }
 
+  const availableCount = spots.filter(s => !s.isOccupied && !s.isReserved).length;
+
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <h1>Parking Spots</h1>
-        <p>Real-time availability and reservations</p>
-      </div>
-
-      <div className="spots-container">
-        <div className="spots-controls">
-          <div className="spots-info">
-            <h3>Total Spots: {spots.length}</h3>
-            <div className="spots-summary">
-              <span className="summary-item available">Available: {
-                spots.filter(s => !s.isOccupied && !s.isReserved).length
-              }</span>
-              <span className="summary-item reserved">Reserved: {
-                spots.filter(s => s.isReserved).length
-              }</span>
-              <span className="summary-item occupied">Occupied: {
-                spots.filter(s => s.isOccupied).length
-              }</span>
-            </div>
+    <div className="parking-container">
+      {/* Header & Stats */}
+      <div className="header-section">
+        <h1>🅿️ Smart Parking Dashboard</h1>
+        
+        <div className="stats-bar">
+          <div className="stat-card">
+            <span>Total Capacity</span>
+            <strong>{spots.length}</strong>
           </div>
-
-          <div className="duration-selector">
-            <label>Reservation Duration:</label>
-            <div className="duration-buttons">
-              {[15, 30, 60, 120].map((mins) => (
-                <button
-                  key={mins}
-                  className={`duration-btn ${duration === mins ? 'active' : ''}`}
-                  onClick={() => setDuration(mins)}
-                >
-                  {mins} min
-                </button>
-              ))}
-            </div>
+          <div className="stat-card active-stat">
+            <span>Available Spots</span>
+            <strong>{availableCount}</strong>
           </div>
-        </div>
-
-        <div className="spots-grid">
-          {spots.map((spot) => (
-            <div 
-              key={spot._id} 
-              className={`spot-card ${getSpotColor(spot)}`}
-              onClick={() => setSelectedSpot(spot)}
-            >
-              <div className="spot-header">
-                <div className="spot-number">#{spot.spotNumber}</div>
-                <div className="spot-type">
-                  {getVehicleIcon(spot.vehicleType)} {spot.vehicleType}
-                </div>
-              </div>
-              
-              <div className="spot-status">
-                {spot.isOccupied ? 'Occupied' : 
-                 spot.isReserved ? 'Reserved' : 'Available'}
-              </div>
-              
-              {!spot.isOccupied && !spot.isReserved && (
-                <button 
-                  className="btn reserve-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleReserve(spot);
-                  }}
-                >
-                  Reserve
-                </button>
-              )}
-            </div>
-          ))}
+          <div className="duration-picker">
+            <span>Duration:</span>
+            {[30, 60, 120].map((mins) => (
+              <button
+                key={mins}
+                className={duration === mins ? 'active-btn' : ''}
+                onClick={() => setDuration(mins)}
+              >
+                {mins}m
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Spot Details Modal */}
+      {/* Grid */}
+      <div className="parking-grid">
+        {spots.map((spot) => (
+          <div
+            key={spot._id}
+            onClick={() => setSelectedSpot(spot)}
+            className={`spot-card ${getStatusClass(spot)}`}
+          >
+            <div className="spot-header">
+              <span className="spot-num">#{spot.spotNumber}</span>
+              <span className="vehicle-icon">{getIcon(spot.vehicleType)}</span>
+            </div>
+            <div className="spot-status-text">
+              {spot.isOccupied ? 'Occupied' : spot.isReserved ? 'Reserved' : 'Available'}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Modal */}
       {selectedSpot && (
         <div className="modal-overlay" onClick={() => setSelectedSpot(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Spot #{selectedSpot.spotNumber} Details</h3>
-            
-            <div className="modal-details">
-              <div className="detail-row">
-                <span className="detail-label">Vehicle Type:</span>
-                <span className="detail-value">{selectedSpot.vehicleType}</span>
-              </div>
-              
-              <div className="detail-row">
-                <span className="detail-label">Status:</span>
-                <span className={`detail-value status-${getSpotColor(selectedSpot)}`}>
-                  {selectedSpot.isOccupied ? 'Occupied' : 
-                   selectedSpot.isReserved ? 'Reserved' : 'Available'}
-                </span>
-              </div>
-              
-              {selectedSpot.reservationExpiry && (
-                <div className="detail-row">
-                  <span className="detail-label">Reserved Until:</span>
-                  <span className="detail-value">
-                    {new Date(selectedSpot.reservationExpiry).toLocaleTimeString()}
-                  </span>
-                </div>
-              )}
+            <div className="modal-header">
+              <h3>Spot #{selectedSpot.spotNumber}</h3>
+              <button className="close-btn" onClick={() => setSelectedSpot(null)}>✖</button>
             </div>
 
-            {!selectedSpot.isOccupied && !selectedSpot.isReserved && (
-              <div className="modal-actions">
-                <p>Reserve for {duration} minutes?</p>
-                <div className="action-buttons">
-                  <button 
-                    className="btn main-btn"
-                    onClick={() => handleReserve(selectedSpot)}
-                  >
-                    Confirm Reservation
-                  </button>
-                  <button 
-                    className="btn secondary-btn"
-                    onClick={() => setSelectedSpot(null)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="modal-body">
+              <p><strong>Type:</strong> {selectedSpot.vehicleType} {getIcon(selectedSpot.vehicleType)}</p>
+              
+              {selectedSpot.reservationExpiry && (
+                <p className="expiry-text">
+                  ⚠️ Reserved until: {new Date(selectedSpot.reservationExpiry).toLocaleTimeString()}
+                </p>
+              )}
 
-            <button 
-              className="btn close-btn"
-              onClick={() => setSelectedSpot(null)}
-            >
-              Close
-            </button>
+              {!selectedSpot.isOccupied && !selectedSpot.isReserved ? (
+                <button
+                  className="reserve-action-btn"
+                  onClick={() => handleReserve(selectedSpot)}
+                >
+                  Confirm Reservation ({duration} mins)
+                </button>
+              ) : (
+                <button disabled className="disabled-btn">
+                  Spot Unavailable
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
