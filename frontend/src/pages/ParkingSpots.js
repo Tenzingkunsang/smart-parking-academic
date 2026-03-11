@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import './ParkingSpots.css';
+import '../styles/Parkingspots.css';
+
 
 const API_URL = 'http://localhost:5001/api';
 

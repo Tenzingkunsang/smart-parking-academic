@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback
+import React, { useState, useEffect, useCallback } from 'react'; 
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
@@ -9,7 +9,6 @@ const Reservations = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Wrap fetchReservations in useCallback to prevent infinite re-renders
   const fetchReservations = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
