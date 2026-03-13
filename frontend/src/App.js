@@ -5,11 +5,12 @@ import Footer from './components/Footer';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import ParkingSpots from './pages/ParkingSpots';
+import ParkingSpots from './components/ParkingSpots';
 import Profile from './pages/Profile';
 import Reservations from './pages/Reservations';
 import ForgotPassword from './pages/ForgotPassword';
 import NotFound from './pages/NotFound';
+import 'leaflet/dist/leaflet.css';
 import './App.css';
 
 // Protected Route Component
