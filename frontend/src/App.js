@@ -7,19 +7,23 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ParkingSpots from './components/ParkingSpots';
 import Profile from './pages/Profile';
-import Reservations from './pages/Reservations';
 import ForgotPassword from './pages/ForgotPassword';
 import NotFound from './pages/NotFound';
+
+
+// NEW COMPONENTS FOR THE BOOKING FLOW
+import ReservationPage from './pages/ReservationPage';
+import PaymentPage from './pages/PaymentPage';
+import TicketPage from './pages/TicketPage.js';
+
 import 'leaflet/dist/leaflet.css';
 import './App.css';
 
-// Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('token');
   return token ? children : <Navigate to="/login" />;
 };
 
-// Public Only Route (for login/register when already logged in)
 const PublicOnlyRoute = ({ children }) => {
   const token = localStorage.getItem('token');
   return !token ? children : <Navigate to="/" />;
@@ -33,55 +37,45 @@ function App() {
         
         <main className="main-content">
           <Routes>
-            {/* Public Routes */}
+            {/* Discovery & Search */}
             <Route path="/" element={<Dashboard />} />
             <Route path="/parking" element={<ParkingSpots />} />
             
-            {/* Public Only Routes (cannot access when logged in) */}
+            {/* The Booking Journey (Human-Friendly Flow) */}
             <Route 
-              path="/login" 
-              element={
-                <PublicOnlyRoute>
-                  <Login />
-                </PublicOnlyRoute>
-              } 
-            />
-            <Route 
-              path="/register" 
-              element={
-                <PublicOnlyRoute>
-                  <Register />
-                </PublicOnlyRoute>
-              } 
-            />
-            <Route 
-              path="/forgot-password" 
-              element={
-                <PublicOnlyRoute>
-                  <ForgotPassword />
-                </PublicOnlyRoute>
-              } 
-            />
-            
-            {/* Protected Routes */}
-            <Route 
-              path="/profile" 
+              path="/reserve/:spotId" 
               element={
                 <ProtectedRoute>
-                  <Profile />
+                  <ReservationPage />
                 </ProtectedRoute>
               } 
             />
             <Route 
-              path="/reservations" 
+              path="/payment/:bookingId" 
               element={
                 <ProtectedRoute>
-                  <Reservations />
+                  <PaymentPage />
                 </ProtectedRoute>
               } 
             />
+            <Route 
+              path="/ticket/:bookingId" 
+              element={
+                <ProtectedRoute>
+                  <TicketPage />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Auth Routes */}
+            <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+            <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
+            <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
             
-            {/* 404 Route */}
+            {/* User Profile & History */}
+            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/reservationpage" element={<ProtectedRoute><ReservationPage  /></ProtectedRoute>} />
+            
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
@@ -91,5 +85,8 @@ function App() {
     </Router>
   );
 }
+
+
+
 
 export default App;
