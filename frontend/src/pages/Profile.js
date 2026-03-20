@@ -8,11 +8,10 @@ import {
   X,
   Lock,
   Calendar,
-  MapPin,
-  Camera, // New Icon
-  User as UserIcon
-} from 'lucide-react';
+  MapPin
+} from 'lucide-react'; // Removed unused imports
 import '../styles/Profile.css';
+import '../styles/Auth.css';
 
 const API_URL = 'http://localhost:5001/api';
 
@@ -22,12 +21,6 @@ const Profile = () => {
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({});
   const [passwordModal, setPasswordModal] = useState(false);
-  
-  // Photo State
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [uploading, setUploading] = useState(false);
-
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -41,109 +34,295 @@ const Profile = () => {
       navigate('/login');
       return;
     }
-    const parsedUser = JSON.parse(userData);
-    setUser(parsedUser);
-    setPreviewUrl(parsedUser.profilePic || null); // Set existing pic if available
+    setUser(JSON.parse(userData));
     setEditData({
-      name: parsedUser.name,
-      phone: parsedUser.phone || '',
-      vehicleNumber: parsedUser.vehicleNumber || ''
+      name: JSON.parse(userData).name,
+      phone: JSON.parse(userData).phone || '',
+      vehicleNumber: JSON.parse(userData).vehicleNumber || ''
     });
     setLoading(false);
   }, [navigate]);
 
-  // Handle Photo Selection & Auto-Upload
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // Local Preview
-    setPreviewUrl(URL.createObjectURL(file));
-    setSelectedFile(file);
-
-    // Prepare for Backend
-    const formData = new FormData();
-    formData.append('profilePic', file);
-
+  const handleEditSubmit = async () => {
     try {
-      setUploading(true);
       const token = localStorage.getItem('token');
-      const res = await axios.post(`${API_URL}/user/upload-photo`, formData, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        }
+      const res = await axios.put(`${API_URL}/user/profile`, editData, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       if (res.data.success) {
-        const updatedUser = { ...user, profilePic: res.data.imageUrl };
+        const updatedUser = { ...user, ...editData };
         setUser(updatedUser);
+        setEditMode(false);
         localStorage.setItem('user', JSON.stringify(updatedUser));
-        alert('Profile photo updated!');
+        alert('Profile updated successfully!');
       }
     } catch (error) {
-      alert('Failed to upload photo');
-    } finally {
-      setUploading(false);
+      alert(error.response?.data?.message || 'Failed to update profile');
     }
   };
 
-  // ... (handleEditSubmit and handlePasswordChange functions remain the same)
-  // [Paste your existing handleEditSubmit and handlePasswordChange here]
+  const handlePasswordChange = async () => {
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert('New passwords do not match');
+      return;
+    }
 
-  if (loading) return <div className="loading-spinner"></div>;
+    if (passwordData.newPassword.length < 6) {
+      alert('Password must be at least 6 characters');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.put(`${API_URL}/user/change-password`, {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.data.success) {
+        alert('Password changed successfully!');
+        setPasswordModal(false);
+        setPasswordData({
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        });
+      }
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to change password');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/login');
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Loading profile...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="page-container">
       <div className="page-header">
         <h1>My Profile</h1>
-        <p>Manage your account and vehicle details</p>
+        <p>Manage your account information</p>
       </div>
 
       <div className="profile-container">
         <div className="profile-card">
-          
-          {/* PHOTO UPLOAD SECTION */}
-          <div className="profile-avatar-section">
-            <div className="avatar-wrapper">
-              {previewUrl ? (
-                <img src={previewUrl} alt="Profile" className="profile-img" />
-              ) : (
-                <div className="profile-img-placeholder">
-                  <UserIcon size={40} />
-                </div>
-              )}
-              
-              <label htmlFor="photo-upload" className="photo-upload-label">
-                <Camera size={18} />
-                <input 
-                  id="photo-upload" 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleFileChange} 
-                  hidden 
-                />
-              </label>
-            </div>
-            {uploading && <p className="uploading-text">Uploading...</p>}
-          </div>
-
           <div className="profile-header">
             <h2>Personal Information</h2>
-            <button className="btn logout-btn" onClick={() => {
-              localStorage.removeItem('token');
-              localStorage.removeItem('user');
-              navigate('/login');
-            }}>
-              <LogOut size={16} /> Logout
+            <button 
+              className="btn logout-btn"
+              onClick={handleLogout}
+            >
+              <LogOut size={16} />
+              Logout
             </button>
           </div>
           
-          {/* ... (Rest of your profile-info rows and password modal) */}
+          <div className="profile-info">
+            <div className="info-row">
+              <span className="info-label">Name:</span>
+              {editMode ? (
+                <input 
+                  type="text"
+                  className="info-input"
+                  value={editData.name}
+                  onChange={(e) => setEditData({...editData, name: e.target.value})}
+                />
+              ) : (
+                <span className="info-value">{user.name}</span>
+              )}
+            </div>
+            
+            <div className="info-row">
+              <span className="info-label">Email:</span>
+              <span className="info-value">{user.email}</span>
+            </div>
+            
+            <div className="info-row">
+              <span className="info-label">User Type:</span>
+              <span className="info-value badge">{user.userType}</span>
+            </div>
+            
+            <div className="info-row">
+              <span className="info-label">Member Since:</span>
+              <span className="info-value">
+                {new Date(user.createdAt).toLocaleDateString()}
+              </span>
+            </div>
+            
+            <div className="info-row">
+              <span className="info-label">Phone:</span>
+              {editMode ? (
+                <input 
+                  type="tel"
+                  className="info-input"
+                  value={editData.phone}
+                  onChange={(e) => setEditData({...editData, phone: e.target.value})}
+                  placeholder="Enter phone number"
+                />
+              ) : (
+                <span className="info-value">{user.phone || 'Not provided'}</span>
+              )}
+            </div>
+            
+            <div className="info-row">
+              <span className="info-label">Vehicle Number:</span>
+              {editMode ? (
+                <input 
+                  type="text"
+                  className="info-input"
+                  value={editData.vehicleNumber}
+                  onChange={(e) => setEditData({...editData, vehicleNumber: e.target.value})}
+                  placeholder="Enter vehicle number"
+                />
+              ) : (
+                <span className="info-value">{user.vehicleNumber || 'Not provided'}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="profile-actions">
+            <div className="action-buttons">
+              {editMode ? (
+                <>
+                  <button 
+                    className="btn secondary-btn"
+                    onClick={() => setEditMode(false)}
+                  >
+                    <X size={16} />
+                    Cancel
+                  </button>
+                  <button 
+                    className="btn main-btn"
+                    onClick={handleEditSubmit}
+                  >
+                    <Check size={16} />
+                    Save Changes
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    className="btn secondary-btn"
+                    onClick={() => setEditMode(true)}
+                  >
+                    <Edit2 size={16} />
+                    Edit Profile
+                  </button>
+                  <button 
+                    className="btn secondary-btn"
+                    onClick={() => setPasswordModal(true)}
+                  >
+                    <Lock size={16} />
+                    Change Password
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
-        
-        {/* ... (Rest of your quick-actions) */}
+
+        <div className="quick-actions">
+          <h3>Quick Actions</h3>
+          <div className="action-buttons">
+            <button 
+              className="btn secondary-btn"
+              onClick={() => navigate('/parking')}
+            >
+              <MapPin size={18} />
+              Reserve Parking Spot
+            </button>
+            
+            <button 
+              className="btn secondary-btn"
+              onClick={() => navigate('/reservations')}
+            >
+              <Calendar size={18} />
+              View My Reservations
+            </button>
+            
+            <button 
+              className="btn secondary-btn"
+              onClick={() => navigate('/')}
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Password Change Modal */}
+      {passwordModal && (
+        <div className="modal-overlay" onClick={() => setPasswordModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Change Password</h3>
+            
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Current Password</label>
+                <input 
+                  type="password"
+                  value={passwordData.currentPassword}
+                  onChange={(e) => setPasswordData({...passwordData, currentPassword: e.target.value})}
+                  placeholder="Enter current password"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>New Password</label>
+                <input 
+                  type="password"
+                  value={passwordData.newPassword}
+                  onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})}
+                  placeholder="Enter new password"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Confirm New Password</label>
+                <input 
+                  type="password"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
+                  placeholder="Confirm new password"
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button 
+                className="btn secondary-btn"
+                onClick={() => setPasswordModal(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn main-btn"
+                onClick={handlePasswordChange}
+              >
+                Change Password
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
