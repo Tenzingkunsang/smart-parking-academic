@@ -5,16 +5,16 @@ import Footer from './components/Footer';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import ParkingSpots from './components/ParkingSpots';
+import ParkingSpots from './components/Parking/ParkingSpots';
 import Profile from './pages/Profile';
 import ForgotPassword from './pages/ForgotPassword';
 import NotFound from './pages/NotFound';
+import MyReservations from './pages/MyReservations';
 
-
-// NEW COMPONENTS FOR THE BOOKING FLOW
+// Booking flow components
 import ReservationPage from './pages/ReservationPage';
 import PaymentPage from './pages/PaymentPage';
-import TicketPage from './pages/TicketPage.js';
+import TicketPage from './pages/TicketPage';
 
 import 'leaflet/dist/leaflet.css';
 import './App.css';
@@ -41,17 +41,19 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/parking" element={<ParkingSpots />} />
             
-            {/* The Booking Journey (Human-Friendly Flow) */}
+            {/* My Reservations */}
             <Route 
-              path="/reserve/:spotId" 
+              path="/reservations" 
               element={
                 <ProtectedRoute>
-                  <ReservationPage />
+                  <MyReservations />
                 </ProtectedRoute>
               } 
             />
+            
+            {/* Booking Journey - Using state instead of URL params */}
             <Route 
-              path="/payment/:bookingId" 
+              path="/payment" 
               element={
                 <ProtectedRoute>
                   <PaymentPage />
@@ -59,10 +61,20 @@ function App() {
               } 
             />
             <Route 
-              path="/ticket/:bookingId" 
+              path="/ticket" 
               element={
                 <ProtectedRoute>
                   <TicketPage />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Alternative booking route with spotId (if needed) */}
+            <Route 
+              path="/reserve/:spotId" 
+              element={
+                <ProtectedRoute>
+                  <ReservationPage />
                 </ProtectedRoute>
               } 
             />
@@ -72,10 +84,10 @@ function App() {
             <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
             <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
             
-            {/* User Profile & History */}
+            {/* User Profile */}
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-            <Route path="/reservationpage" element={<ProtectedRoute><ReservationPage  /></ProtectedRoute>} />
             
+            {/* 404 - Not Found */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
@@ -85,8 +97,5 @@ function App() {
     </Router>
   );
 }
-
-
-
 
 export default App;

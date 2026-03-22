@@ -1,14 +1,13 @@
-// src/services/api.js
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5001/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
-// Create axios instance
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000,
 });
 
 // Add token to requests
@@ -20,22 +19,21 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
-// Auth APIs
-export const authAPI = {
-  register: (userData) => api.post('/auth/register', userData),
-  login: (credentials) => api.post('/auth/login', credentials),
-  getProfile: () => api.get('/auth/me'),
-};
-
-// Parking APIs
-export const parkingAPI = {
-  getSpots: () => api.get('/parking/spots'),
-  initializeSpots: () => api.post('/parking/init'),
-  reserveSpot: (data) => api.post('/parking/reserve', data),
-  getMyReservations: () => api.get('/parking/my-reservations'),
-};
+// Handle response errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;

@@ -1,0 +1,519 @@
+/* Black and Green Theme - SmartPark Brand Colors */
+:root {
+  --primary-black: #000000;
+  --primary-green: #00ff00;
+  --primary-green-dark: #00cc00;
+  --primary-green-light: #33ff33;
+  --gray-100: #f5f5f5;
+  --gray-200: #e5e5e5;
+  --gray-300: #d4d4d4;
+  --gray-400: #a3a3a3;
+  --gray-500: #737373;
+  --gray-600: #525252;
+  --gray-700: #404040;
+  --gray-800: #262626;
+  --gray-900: #171717;
+  --gray-950: #0a0a0a;
+}
+
+/* Parking Spots Container */
+.parking-container {
+  min-height: 100vh;
+  background: var(--gray-950);
+}
+
+/* Hero Section */
+.parking-hero {
+  background: linear-gradient(135deg, var(--primary-black) 0%, #1a3a1a 100%);
+  padding: 3rem 2rem;
+  color: white;
+  text-align: center;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid var(--primary-green);
+}
+
+.parking-hero h1 {
+  font-size: 2.5rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, var(--primary-green) 0%, #ffffff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.parking-hero p {
+  font-size: 1.2rem;
+  color: var(--gray-300);
+}
+
+/* Filters Section */
+.filters-section {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.filter-card {
+  background: var(--gray-900);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--gray-800);
+}
+
+.filter-group {
+  margin-bottom: 1.5rem;
+}
+
+.filter-group:last-child {
+  margin-bottom: 0;
+}
+
+.filter-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gray-300);
+  margin-bottom: 0.75rem;
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  flex: 1;
+  padding: 0.625rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  border: 1px solid var(--gray-700);
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--gray-800);
+  color: var(--gray-300);
+}
+
+.filter-btn.active {
+  background: var(--primary-green);
+  color: var(--primary-black);
+  border-color: var(--primary-green);
+  font-weight: bold;
+}
+
+.filter-btn:not(.active):hover {
+  background: var(--gray-700);
+  transform: translateY(-1px);
+  border-color: var(--primary-green);
+}
+
+/* SVG Icons for Filters */
+.filter-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Results Count */
+.results-count {
+  max-width: 1200px;
+  margin: 0 auto 1.5rem;
+  padding: 0 1rem;
+  color: var(--gray-400);
+  font-size: 0.875rem;
+}
+
+.results-count span {
+  font-weight: 700;
+  color: var(--primary-green);
+}
+
+/* Parking Grid */
+.parking-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem 3rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+/* Spot Card */
+.spot-card {
+  background: var(--gray-900);
+  border-radius: 1rem;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--gray-800);
+}
+
+.spot-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+  border-color: var(--primary-green);
+}
+
+.card-gradient {
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary-green), var(--primary-green-dark));
+}
+
+.card-content {
+  padding: 1.5rem;
+}
+
+/* Card Header */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.location-info {
+  flex: 1;
+}
+
+.location-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 0.25rem;
+}
+
+.location-address {
+  font-size: 0.75rem;
+  color: var(--gray-400);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.location-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+/* Status Badge */
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.status-available {
+  background: rgba(0, 255, 0, 0.1);
+  color: var(--primary-green);
+  border: 1px solid rgba(0, 255, 0, 0.3);
+}
+
+.status-reserved {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.status-occupied {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Spot Number Badge */
+.spot-badge {
+  display: inline-flex;
+  align-items: center;
+  background: var(--gray-800);
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: var(--gray-300);
+}
+
+.spot-number {
+  font-weight: 700;
+  margin-left: 0.25rem;
+  color: var(--primary-green);
+}
+
+/* Price & Vehicle Grid */
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.info-box {
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  text-align: center;
+}
+
+.price-box {
+  background: var(--gray-800);
+  border: 1px solid var(--gray-700);
+}
+
+.vehicle-box {
+  background: var(--gray-800);
+  border: 1px solid var(--gray-700);
+}
+
+.info-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.25rem;
+  color: var(--gray-400);
+}
+
+.info-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.price-value {
+  color: var(--primary-green);
+}
+
+.vehicle-value {
+  color: white;
+  text-transform: capitalize;
+}
+
+.info-sub {
+  font-size: 0.7rem;
+  color: var(--gray-500);
+  margin-top: 0.25rem;
+}
+
+/* SVG Icons for Cards */
+.card-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Book Button */
+.book-btn {
+  width: 100%;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--gray-800);
+  color: white;
+  border: 1px solid var(--gray-700);
+}
+
+.book-btn-available {
+  background: linear-gradient(135deg, var(--primary-green) 0%, var(--primary-green-dark) 100%);
+  color: var(--primary-black);
+  font-weight: bold;
+  border: none;
+}
+
+.book-btn-available:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 255, 0, 0.3);
+}
+
+.book-btn-disabled {
+  background: var(--gray-800);
+  color: var(--gray-500);
+  cursor: not-allowed;
+  border: 1px solid var(--gray-700);
+}
+
+/* Loading State */
+.loading-container {
+  min-height: 100vh;
+  background: var(--gray-950);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-spinner {
+  text-align: center;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--gray-800);
+  border-top-color: var(--primary-green);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-spinner p {
+  color: var(--gray-400);
+}
+
+/* Empty State */
+.empty-state {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 3rem;
+  background: var(--gray-900);
+  border-radius: 1rem;
+  text-align: center;
+  border: 1px solid var(--gray-800);
+}
+
+.empty-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1rem;
+  color: var(--gray-600);
+}
+
+.empty-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 0.5rem;
+}
+
+.empty-text {
+  color: var(--gray-400);
+  margin-bottom: 1.5rem;
+}
+
+.clear-filters-btn {
+  background: var(--primary-green);
+  color: var(--primary-black);
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: bold;
+}
+
+.clear-filters-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 255, 0, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .parking-hero h1 {
+    font-size: 1.75rem;
+  }
+  
+  .parking-hero p {
+    font-size: 1rem;
+  }
+  
+  .filter-buttons {
+    flex-direction: column;
+  }
+  
+  .filter-btn {
+    width: 100%;
+  }
+  
+  .parking-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .info-grid {
+    gap: 0.75rem;
+  }
+  
+  .info-value {
+    font-size: 1rem;
+  }
+}
+
+/* Map View Container */
+.map-view {
+  margin: 1rem 0 2rem;
+  position: relative;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  min-height: 500px;
+}
+
+/* Ensure Leaflet map takes full width */
+.leaflet-container {
+  width: 100%;
+  height: 500px;
+  background: var(--gray-900);
+  z-index: 1;
+}
+
+/* View Toggle */
+.view-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.view-btn {
+  padding: 0.75rem 2rem;
+  background: var(--gray-800);
+  border: 1px solid var(--gray-700);
+  border-radius: 0.75rem;
+  color: var(--gray-300);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.view-btn.active {
+  background: linear-gradient(135deg, var(--primary-green) 0%, var(--primary-green-dark) 100%);
+  color: var(--primary-black);
+  border-color: var(--primary-green);
+}
+
+.view-btn:hover:not(.active) {
+  background: var(--gray-700);
+  transform: translateY(-1px);
+}

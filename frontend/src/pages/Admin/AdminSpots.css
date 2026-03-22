@@ -1,0 +1,130 @@
+.admin-spots {
+  min-height: 100vh;
+  background: var(--gray-950);
+  padding: 2rem;
+}
+
+.admin-spots .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.admin-spots .header h1 {
+  color: white;
+  font-size: 1.75rem;
+}
+
+.admin-spots .add-btn {
+  padding: 0.75rem 1.5rem;
+  background: var(--primary-green);
+  color: var(--primary-black);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.admin-spots .back-btn {
+  padding: 0.75rem 1.5rem;
+  background: var(--gray-800);
+  color: white;
+  border: 1px solid var(--gray-700);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.spot-form {
+  background: var(--gray-900);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  border: 1px solid var(--gray-800);
+}
+
+.spot-form h3 {
+  color: white;
+  margin-bottom: 1rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.form-grid input, .form-grid select {
+  padding: 0.75rem;
+  background: var(--gray-800);
+  border: 1px solid var(--gray-700);
+  border-radius: 0.5rem;
+  color: white;
+}
+
+.form-grid input:focus, .form-grid select:focus {
+  outline: none;
+  border-color: var(--primary-green);
+}
+
+.submit-btn {
+  padding: 0.75rem;
+  background: var(--primary-green);
+  color: var(--primary-black);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.spots-table {
+  background: var(--gray-900);
+  border-radius: 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--gray-800);
+}
+
+.spots-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.spots-table th, .spots-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--gray-800);
+}
+
+.spots-table th {
+  color: var(--gray-400);
+  font-weight: 600;
+  background: var(--gray-950);
+}
+
+.spots-table td {
+  color: var(--gray-300);
+}
+
+.delete-btn {
+  padding: 0.25rem 0.75rem;
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.delete-btn:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.admin-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  color: var(--gray-400);
+}

@@ -33,7 +33,6 @@ const Navbar = () => {
         {/* Logo/Brand */}
         <div className="nav-brand">
           <Link to="/" className="brand-link">
-            <div className="brand-logo">🅿️</div>
             <div>
               <h1 className="brand-title">SmartPark</h1>
               <p className="brand-subtitle">Parking System</p>
