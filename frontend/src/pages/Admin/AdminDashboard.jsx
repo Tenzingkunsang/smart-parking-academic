@@ -9,7 +9,6 @@ const AdminDashboard = () => {
     occupiedSpots: 0,
     reservedSpots: 0,
     totalUsers: 0,
-    totalAdmins: 0,
     activeReservations: 0,
     todayRevenue: 0
   });
@@ -46,13 +45,15 @@ const AdminDashboard = () => {
     }
   };
 
-  if (loading) return <div className="admin-loading">Loading dashboard...</div>;
+  if (loading) {
+    return <div className="admin-loading">Loading dashboard...</div>;
+  }
 
   return (
     <div className="admin-container">
       <div className="admin-header">
         <h1>Admin Dashboard</h1>
-        <p>Welcome back, Admin! Here's your parking system overview.</p>
+        <p>Manage parking spots, view analytics, and monitor check-ins</p>
       </div>
 
       <div className="stats-grid">
@@ -91,13 +92,6 @@ const AdminDashboard = () => {
             <p className="stat-number">{stats.totalUsers}</p>
           </div>
         </div>
-        <div className="stat-card admins">
-          <div className="stat-icon">A</div>
-          <div className="stat-info">
-            <h3>Admins</h3>
-            <p className="stat-number">{stats.totalAdmins}</p>
-          </div>
-        </div>
         <div className="stat-card revenue">
           <div className="stat-icon">$</div>
           <div className="stat-info">
@@ -111,14 +105,14 @@ const AdminDashboard = () => {
         <button onClick={() => navigate('/admin/spots')} className="action-btn">
           Manage Parking Spots
         </button>
-        <button onClick={() => navigate('/admin/scan')} className="action-btn scanner-btn">
-          QR Scanner
+        <button onClick={() => navigate('/admin/reservations')} className="action-btn">
+          View All Reservations
         </button>
         <button onClick={() => navigate('/admin/users')} className="action-btn">
           Manage Users
         </button>
-        <button onClick={() => navigate('/admin/reservations')} className="action-btn">
-          All Reservations
+        <button onClick={() => navigate('/admin/scan')} className="action-btn scanner-btn">
+          QR Scanner
         </button>
       </div>
     </div>
@@ -126,3 +120,4 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
+EOF
