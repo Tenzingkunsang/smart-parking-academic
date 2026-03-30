@@ -7,23 +7,53 @@ const PaymentSuccess = () => {
   const navigate = useNavigate();
   const [verifying, setVerifying] = useState(true);
   const [paymentData, setPaymentData] = useState(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    // Simulate payment verification
-    const timer = setTimeout(() => {
-      const pidx = searchParams.get('pidx');
-      const transactionId = searchParams.get('transaction_id');
-      
-      setPaymentData({
-        pidx: pidx || 'test_' + Date.now(),
-        transaction_id: transactionId || 'TXN_' + Date.now(),
-        total_amount: 5000, // This would come from the actual payment
-        status: 'Completed'
-      });
-      setVerifying(false);
-    }, 2000);
-    
-    return () => clearTimeout(timer);
+    const verifyPayment = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const pidx = searchParams.get('pidx');
+        const reservationId = searchParams.get('reservationId') || searchParams.get('purchase_order_id');
+
+        if (!token) {
+          setError('Please login to verify payment.');
+          return;
+        }
+
+        if (!pidx || !reservationId) {
+          setError('Missing payment callback data from Khalti.');
+          return;
+        }
+
+        const response = await fetch('http://localhost:5001/api/payments/khalti/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ reservationId, pidx })
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          setError(data.message || 'Payment verification failed.');
+          return;
+        }
+
+        setPaymentData({
+          transaction_id: data.data?.transactionId || 'N/A',
+          total_amount: Math.round((data.data?.amount || 0) * 100),
+          status: 'Completed'
+        });
+      } catch (err) {
+        setError('Unable to verify payment. Please contact support if amount was deducted.');
+      } finally {
+        setVerifying(false);
+      }
+    };
+
+    verifyPayment();
   }, [searchParams]);
 
   if (verifying) {
@@ -41,21 +71,25 @@ const PaymentSuccess = () => {
   return (
     <div className="payment-success-container">
       <div className="payment-success-card">
-        <div className="icon success">✓</div>
-        <h2>Payment Successful!</h2>
-        <p>Your parking spot has been reserved successfully</p>
+        <div className={`icon ${error ? 'failed' : 'success'}`}>{error ? '!' : '✓'}</div>
+        <h2>{error ? 'Payment Verification Failed' : 'Payment Successful!'}</h2>
+        <p>
+          {error
+            ? error
+            : 'Your parking spot has been reserved successfully'}
+        </p>
         <div className="payment-details">
           <div className="detail-row">
             <span>Transaction ID:</span>
-            <span>{paymentData?.transaction_id || 'N/A'}</span>
+            <span>{paymentData?.transaction_id || '-'}</span>
           </div>
           <div className="detail-row">
             <span>Amount Paid:</span>
             <span>NPR {paymentData?.total_amount ? paymentData.total_amount / 100 : 0}</span>
           </div>
         </div>
-        <button onClick={() => navigate('/reservations')} className="btn-primary">
-          View My Bookings
+        <button onClick={() => navigate(error ? '/payment' : '/reservations')} className="btn-primary">
+          {error ? 'Try Again' : 'View My Bookings'}
         </button>
       </div>
     </div>

@@ -24,7 +24,13 @@ const Login = () => {
       if (data.success) {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = '/';
+        
+        // Redirect based on user type
+        if (data.user.userType === 'admin') {
+          window.location.href = '/admin';
+        } else {
+          window.location.href = '/';
+        }
       } else {
         setError(data.message || 'Login failed');
       }

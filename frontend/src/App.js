@@ -15,6 +15,7 @@ import MyReservations from './pages/user/MyReservations';
 import ReservationPage from './pages/user/ReservationPage';
 import PaymentPage from './pages/user/PaymentPage';
 import TicketPage from './pages/user/TicketPage';
+import PaymentSuccess from './pages/user/PaymentSuccess';
 
 // Admin components
 import AdminDashboard from './pages/Admin/AdminDashboard';
@@ -90,6 +91,7 @@ function App() {
                 </ProtectedRoute>
               } 
             />
+            <Route path="/payment-success" element={<PaymentSuccess />} />
             
             {/* Alternative booking route */}
             <Route 

@@ -26,6 +26,32 @@ const PaymentPage = () => {
     
     try {
       const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please login again to continue payment');
+        navigate('/login');
+        return;
+      }
+
+      if (paymentMethod === 'khalti') {
+        const response = await fetch('http://localhost:5001/api/payments/khalti/initiate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ reservationId: pendingReservationId })
+        });
+
+        const data = await response.json();
+        if (data.success && data.payment_url) {
+          window.location.href = data.payment_url;
+          return;
+        }
+
+        alert(data.message || 'Failed to initiate Khalti payment');
+        return;
+      }
+
       const response = await fetch(`http://localhost:5001/api/reservations/confirm/${pendingReservationId}`, {
         method: 'POST',
         headers: {
@@ -40,21 +66,22 @@ const PaymentPage = () => {
       
       const data = await response.json();
       
-      if (data.success) {
-        const reservation = data.data;
-        navigate('/ticket', {
-          state: {
-            spot,
-            duration,
-            totalAmount,
-            paymentMethod,
-            bookingId: reservation._id,
-            paymentStatus: 'completed'
-          }
-        });
-      } else {
+      if (!data.success) {
         alert(data.message || 'Payment confirmation failed');
+        return;
       }
+
+      const reservation = data.data;
+      navigate('/ticket', {
+        state: {
+          spot,
+          duration,
+          totalAmount,
+          paymentMethod,
+          bookingId: reservation._id,
+          paymentStatus: 'completed'
+        }
+      });
     } catch (error) {
       console.error('Payment error:', error);
       alert('Payment failed. Please try again.');

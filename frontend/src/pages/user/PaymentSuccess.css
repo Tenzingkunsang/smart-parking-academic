@@ -35,6 +35,12 @@
   border: 2px solid var(--primary-green);
 }
 
+.payment-success-card .icon.failed {
+  background: rgba(255, 87, 87, 0.1);
+  color: #ff5757;
+  border: 2px solid #ff5757;
+}
+
 .payment-success-card h2 {
   color: white;
   margin-bottom: 0.5rem;
