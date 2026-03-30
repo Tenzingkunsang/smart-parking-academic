@@ -1,14 +1,10 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import api from '../services/api';
-import './Register.css';
 
 const Register = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
-    confirmPassword: '',
     phone: '',
     vehicleNumber: ''
   });
@@ -22,115 +18,122 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
     setLoading(true);
     setError('');
     setSuccess('');
 
     try {
-      const response = await api.post('/auth/register', {
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        phone: formData.phone,
-        vehicleNumber: formData.vehicleNumber
+      const response = await fetch('http://localhost:5001/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
       });
-      if (response.data.success) {
+      
+      const data = await response.json();
+      
+      if (data.success) {
         setSuccess('Registration successful! Redirecting to login...');
         setTimeout(() => {
           window.location.href = '/login';
         }, 2000);
       } else {
-        setError(response.data.message || 'Registration failed');
+        setError(data.message || 'Registration failed');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
+      setError('Cannot connect to server. Make sure backend is running on port 5001');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="register-container">
-      <div className="register-card">
-        <h2>Create Account</h2>
-        <p>Sign up for SmartPark</p>
-        {error && <div className="error-message">{error}</div>}
-        {success && <div className="success-message">{success}</div>}
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a', padding: '20px' }}>
+      <div style={{ background: '#171717', padding: '2rem', borderRadius: '1rem', width: '100%', maxWidth: '500px' }}>
+        <h2 style={{ color: 'white', marginBottom: '0.5rem' }}>Create Account</h2>
+        <p style={{ color: '#a3a3a3', marginBottom: '1.5rem' }}>Sign up for SmartPark</p>
+        
+        {error && (
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #ef4444', color: '#ef4444', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>
+            {error}
+          </div>
+        )}
+        
+        {success && (
+          <div style={{ background: 'rgba(0,255,0,0.1)', border: '1px solid #00ff00', color: '#00ff00', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>
+            {success}
+          </div>
+        )}
+        
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Full Name</label>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#d4d4d4', marginBottom: '0.5rem' }}>Full Name</label>
             <input
               type="text"
               name="name"
               value={formData.name}
               onChange={handleChange}
               required
-              placeholder="Enter your full name"
+              style={{ width: '100%', padding: '0.75rem', background: '#262626', border: '1px solid #404040', borderRadius: '0.5rem', color: 'white' }}
             />
           </div>
-          <div className="form-group">
-            <label>Email Address</label>
+          
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#d4d4d4', marginBottom: '0.5rem' }}>Email</label>
             <input
               type="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
               required
-              placeholder="Enter your email"
+              style={{ width: '100%', padding: '0.75rem', background: '#262626', border: '1px solid #404040', borderRadius: '0.5rem', color: 'white' }}
             />
           </div>
-          <div className="form-group">
-            <label>Password</label>
+          
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#d4d4d4', marginBottom: '0.5rem' }}>Password</label>
             <input
               type="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
               required
-              placeholder="Create a password"
+              style={{ width: '100%', padding: '0.75rem', background: '#262626', border: '1px solid #404040', borderRadius: '0.5rem', color: 'white' }}
             />
           </div>
-          <div className="form-group">
-            <label>Confirm Password</label>
-            <input
-              type="password"
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              required
-              placeholder="Confirm your password"
-            />
-          </div>
-          <div className="form-group">
-            <label>Phone Number</label>
+          
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#d4d4d4', marginBottom: '0.5rem' }}>Phone (Optional)</label>
             <input
               type="tel"
               name="phone"
               value={formData.phone}
               onChange={handleChange}
-              placeholder="Optional"
+              style={{ width: '100%', padding: '0.75rem', background: '#262626', border: '1px solid #404040', borderRadius: '0.5rem', color: 'white' }}
             />
           </div>
-          <div className="form-group">
-            <label>Vehicle Number</label>
+          
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#d4d4d4', marginBottom: '0.5rem' }}>Vehicle Number (Optional)</label>
             <input
               type="text"
               name="vehicleNumber"
               value={formData.vehicleNumber}
               onChange={handleChange}
-              placeholder="Optional (e.g., BA12345)"
+              style={{ width: '100%', padding: '0.75rem', background: '#262626', border: '1px solid #404040', borderRadius: '0.5rem', color: 'white' }}
             />
           </div>
-          <button type="submit" disabled={loading} className="register-btn">
+          
+          <button 
+            type="submit" 
+            disabled={loading}
+            style={{ width: '100%', padding: '0.75rem', background: '#00ff00', color: 'black', border: 'none', borderRadius: '0.5rem', fontWeight: 'bold', cursor: 'pointer' }}
+          >
             {loading ? 'Registering...' : 'Register'}
           </button>
         </form>
-        <div className="register-footer">
-          Already have an account? <Link to="/login">Login</Link>
+        
+        <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+          <a href="/login" style={{ color: '#00ff00', textDecoration: 'none' }}>Already have an account? Login</a>
         </div>
       </div>
     </div>

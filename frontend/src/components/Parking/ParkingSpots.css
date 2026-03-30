@@ -1,4 +1,4 @@
-/* Black and Green Theme - SmartPark Brand Colors */
+
 :root {
   --primary-black: #000000;
   --primary-green: #00ff00;
@@ -14,44 +14,73 @@
   --gray-800: #262626;
   --gray-900: #171717;
   --gray-950: #0a0a0a;
+  --transition-default: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --shadow-sm: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.4);
+  --shadow-green: 0 4px 12px rgba(0, 255, 0, 0.3);
+  --shadow-green-lg: 0 8px 24px rgba(0, 255, 0, 0.2);
 }
 
-/* Parking Spots Container */
+/* ========================================
+   Main Container
+   ======================================== */
 .parking-container {
   min-height: 100vh;
   background: var(--gray-950);
 }
 
-/* Hero Section */
+/* ========================================
+   Hero Section
+   ======================================== */
 .parking-hero {
   background: linear-gradient(135deg, var(--primary-black) 0%, #1a3a1a 100%);
-  padding: 3rem 2rem;
+  padding: 4rem 2rem;
   color: white;
   text-align: center;
+  border-bottom: 3px solid var(--primary-green);
   margin-bottom: 2rem;
-  border-bottom: 2px solid var(--primary-green);
+  position: relative;
+  overflow: hidden;
+}
+
+.parking-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 30% 50%, rgba(0, 255, 0, 0.05), transparent);
+  pointer-events: none;
 }
 
 .parking-hero h1 {
-  font-size: 2.5rem;
-  font-weight: bold;
+  font-size: 3rem;
+  font-weight: 800;
   margin-bottom: 1rem;
   background: linear-gradient(135deg, var(--primary-green) 0%, #ffffff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  letter-spacing: -0.5px;
+  position: relative;
 }
 
 .parking-hero p {
   font-size: 1.2rem;
   color: var(--gray-300);
+  max-width: 600px;
+  margin: 0 auto;
 }
 
-/* Filters Section */
+/* ========================================
+   Filters Section
+   ======================================== */
 .filters-section {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 0 1.5rem;
 }
 
 .filter-card {
@@ -59,7 +88,7 @@
   border-radius: 1rem;
   padding: 1.5rem;
   margin-bottom: 2rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-sm);
   border: 1px solid var(--gray-800);
 }
 
@@ -72,13 +101,13 @@
 }
 
 .filter-label {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  color: var(--gray-300);
+  color: var(--gray-400);
   margin-bottom: 0.75rem;
   display: block;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .filter-buttons {
@@ -89,50 +118,42 @@
 
 .filter-btn {
   flex: 1;
-  padding: 0.625rem 1rem;
+  min-width: 100px;
+  padding: 0.75rem 1rem;
   border-radius: 0.5rem;
-  font-weight: 500;
-  transition: all 0.3s ease;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: var(--transition-default);
   cursor: pointer;
   border: 1px solid var(--gray-700);
-  font-size: 0.875rem;
+  background: var(--gray-800);
+  color: var(--gray-300);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: var(--gray-800);
-  color: var(--gray-300);
 }
 
 .filter-btn.active {
   background: var(--primary-green);
   color: var(--primary-black);
   border-color: var(--primary-green);
-  font-weight: bold;
+  box-shadow: var(--shadow-green);
 }
 
-.filter-btn:not(.active):hover {
+.filter-btn:hover:not(.active) {
   background: var(--gray-700);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   border-color: var(--primary-green);
 }
 
-/* SVG Icons for Filters */
-.filter-icon {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-/* Results Count */
+/* ========================================
+   Results Count
+   ======================================== */
 .results-count {
   max-width: 1200px;
   margin: 0 auto 1.5rem;
-  padding: 0 1rem;
+  padding: 0 1.5rem;
   color: var(--gray-400);
   font-size: 0.875rem;
 }
@@ -142,47 +163,124 @@
   color: var(--primary-green);
 }
 
-/* Parking Grid */
-.parking-grid {
+/* ========================================
+   View Toggle Buttons
+   ======================================== */
+.view-toggle {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
   max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1rem 3rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 1.5rem;
+  margin: 0 auto 1.5rem;
+  padding: 0 1.5rem;
 }
 
-/* Spot Card */
-.spot-card {
-  background: var(--gray-900);
-  border-radius: 1rem;
-  overflow: hidden;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--gray-800);
+.view-btn {
+  padding: 0.625rem 1.5rem;
+  background: var(--gray-800);
+  border: 1px solid var(--gray-700);
+  border-radius: 2rem;
+  color: var(--gray-300);
+  cursor: pointer;
+  transition: var(--transition-default);
+  font-weight: 600;
+  font-size: 0.875rem;
 }
 
-.spot-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+.view-btn.active {
+  background: var(--primary-green);
+  color: var(--primary-black);
   border-color: var(--primary-green);
 }
 
+.view-btn:hover:not(.active) {
+  background: var(--gray-700);
+  transform: translateY(-1px);
+}
+
+/* ========================================
+   Map View
+   ======================================== */
+.map-view {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.map-view > div {
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--gray-800);
+}
+
+/* ========================================
+   Parking Grid (List View) - IMPROVED CARD DESIGN
+   ======================================== */
+.parking-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 2rem;
+}
+
+/* ========================================
+   IMPROVED SPOT CARD DESIGN
+   ======================================== */
+.spot-card {
+  background: linear-gradient(145deg, var(--gray-900) 0%, var(--gray-950) 100%);
+  border-radius: 1.25rem;
+  overflow: hidden;
+  transition: var(--transition-default);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-800);
+  position: relative;
+  cursor: pointer;
+}
+
+.spot-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 100% 0%, rgba(0, 255, 0, 0.03), transparent);
+  pointer-events: none;
+}
+
+.spot-card:hover {
+  transform: translateY(-8px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--primary-green);
+}
+
+.spot-card:hover .card-gradient {
+  height: 6px;
+}
+
+/* Card Gradient Accent */
 .card-gradient {
   height: 4px;
-  background: linear-gradient(90deg, var(--primary-green), var(--primary-green-dark));
+  background: linear-gradient(90deg, var(--primary-green), var(--primary-green-dark), var(--primary-green-light));
+  transition: height 0.3s ease;
 }
 
+/* Card Content */
 .card-content {
   padding: 1.5rem;
+  position: relative;
 }
 
-/* Card Header */
+/* Card Header with Badge */
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  gap: 1rem;
 }
 
 .location-info {
@@ -190,10 +288,12 @@
 }
 
 .location-name {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: 1.35rem;
+  font-weight: 800;
   color: white;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.3;
+  letter-spacing: -0.3px;
 }
 
 .location-address {
@@ -201,7 +301,7 @@
   color: var(--gray-400);
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.35rem;
 }
 
 .location-icon {
@@ -212,54 +312,66 @@
   stroke-width: 2;
 }
 
-/* Status Badge */
+/* Status Badge - Enhanced */
 .status-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  padding: 0.35rem 0.9rem;
+  border-radius: 2rem;
+  font-size: 0.7rem;
+  font-weight: 700;
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.35rem;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  letter-spacing: 0.3px;
 }
 
 .status-available {
-  background: rgba(0, 255, 0, 0.1);
+  background: rgba(0, 255, 0, 0.15);
   color: var(--primary-green);
-  border: 1px solid rgba(0, 255, 0, 0.3);
+  border: 1px solid rgba(0, 255, 0, 0.4);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.1);
 }
 
 .status-reserved {
-  background: rgba(255, 193, 7, 0.1);
+  background: rgba(255, 193, 7, 0.15);
   color: #ffc107;
-  border: 1px solid rgba(255, 193, 7, 0.3);
+  border: 1px solid rgba(255, 193, 7, 0.4);
 }
 
 .status-occupied {
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  border: 1px solid rgba(239, 68, 68, 0.4);
 }
 
-/* Spot Number Badge */
+/* Spot Number Badge - Enhanced */
 .spot-badge {
   display: inline-flex;
   align-items: center;
   background: var(--gray-800);
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  margin-bottom: 1rem;
-  font-size: 0.875rem;
+  padding: 0.4rem 1rem;
+  border-radius: 2rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.75rem;
   color: var(--gray-300);
+  border: 1px solid var(--gray-700);
+  transition: var(--transition-default);
+}
+
+.spot-card:hover .spot-badge {
+  border-color: var(--primary-green);
+  background: rgba(0, 255, 0, 0.05);
 }
 
 .spot-number {
-  font-weight: 700;
-  margin-left: 0.25rem;
+  font-weight: 800;
+  margin-left: 0.35rem;
   color: var(--primary-green);
+  font-size: 0.9rem;
 }
 
-/* Price & Vehicle Grid */
+/* Info Grid - Price & Vehicle - Enhanced */
 .info-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -268,89 +380,158 @@
 }
 
 .info-box {
-  padding: 0.75rem;
-  border-radius: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.875rem;
   text-align: center;
-}
-
-.price-box {
   background: var(--gray-800);
   border: 1px solid var(--gray-700);
+  transition: var(--transition-default);
+  position: relative;
+  overflow: hidden;
 }
 
-.vehicle-box {
-  background: var(--gray-800);
-  border: 1px solid var(--gray-700);
+.info-box::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary-green), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+}
+
+.spot-card:hover .info-box::after {
+  transform: translateX(0);
+}
+
+.info-box:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary-green);
 }
 
 .info-label {
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.65rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
   color: var(--gray-400);
 }
 
 .info-value {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .price-value {
   color: var(--primary-green);
+  text-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
 }
 
 .vehicle-value {
   color: white;
   text-transform: capitalize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.vehicle-icon {
+  font-size: 1.25rem;
 }
 
 .info-sub {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   color: var(--gray-500);
-  margin-top: 0.25rem;
+  margin-top: 0.35rem;
 }
 
-/* SVG Icons for Cards */
-.card-icon {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  display: inline-block;
-  vertical-align: middle;
+/* Available Spaces Indicator - NEW */
+.spaces-indicator {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--gray-800);
+  border-bottom: 1px solid var(--gray-800);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-/* Book Button */
+.spaces-label {
+  font-size: 0.7rem;
+  color: var(--gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.spaces-count {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--primary-green);
+}
+
+.spaces-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--gray-800);
+  border-radius: 2px;
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+
+.spaces-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-green), var(--primary-green-dark));
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Book Button - Enhanced */
 .book-btn {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0.875rem;
   border: none;
-  border-radius: 0.75rem;
-  font-weight: 600;
-  transition: all 0.3s ease;
+  border-radius: 0.875rem;
+  font-weight: 700;
+  transition: var(--transition-default);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: var(--gray-800);
-  color: white;
-  border: 1px solid var(--gray-700);
+  font-size: 0.9rem;
+  position: relative;
+  overflow: hidden;
 }
 
 .book-btn-available {
   background: linear-gradient(135deg, var(--primary-green) 0%, var(--primary-green-dark) 100%);
   color: var(--primary-black);
-  font-weight: bold;
   border: none;
 }
 
+.book-btn-available::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.book-btn-available:hover::before {
+  left: 100%;
+}
+
 .book-btn-available:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 255, 0, 0.3);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-green-lg);
 }
 
 .book-btn-disabled {
@@ -360,7 +541,9 @@
   border: 1px solid var(--gray-700);
 }
 
-/* Loading State */
+/* ========================================
+   Loading State
+   ======================================== */
 .loading-container {
   min-height: 100vh;
   background: var(--gray-950);
@@ -391,22 +574,23 @@
   color: var(--gray-400);
 }
 
-/* Empty State */
+/* ========================================
+   Empty State
+   ======================================== */
 .empty-state {
-  max-width: 1200px;
-  margin: 0 auto;
+  max-width: 500px;
+  margin: 4rem auto;
   padding: 3rem;
   background: var(--gray-900);
-  border-radius: 1rem;
+  border-radius: 1.5rem;
   text-align: center;
   border: 1px solid var(--gray-800);
 }
 
 .empty-icon {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 1rem;
-  color: var(--gray-600);
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
 }
 
 .empty-title {
@@ -424,23 +608,65 @@
 .clear-filters-btn {
   background: var(--primary-green);
   color: var(--primary-black);
-  padding: 0.5rem 1.5rem;
+  padding: 0.75rem 1.5rem;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: bold;
+  transition: var(--transition-default);
+  font-weight: 700;
 }
 
 .clear-filters-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 255, 0, 0.3);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-green);
 }
 
-/* Responsive */
+/* ========================================
+   Leaflet Map Overrides
+   ======================================== */
+.leaflet-container {
+  background: var(--gray-900);
+  z-index: 1;
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--gray-900);
+  color: white;
+  border-radius: 0.75rem;
+  border: 1px solid var(--gray-700);
+}
+
+.leaflet-popup-tip {
+  background: var(--gray-900);
+  border: 1px solid var(--gray-700);
+}
+
+.leaflet-popup-content {
+  color: white;
+  margin: 0.75rem 1rem;
+}
+
+/* Custom Marker */
+.custom-marker {
+  background: transparent;
+  border: none;
+  transition: transform 0.2s ease;
+}
+
+.custom-marker:hover {
+  transform: scale(1.1);
+}
+
+/* ========================================
+   Responsive Design
+   ======================================== */
 @media (max-width: 768px) {
+  .parking-hero {
+    padding: 2rem 1rem;
+  }
+  
   .parking-hero h1 {
-    font-size: 1.75rem;
+    font-size: 2rem;
   }
   
   .parking-hero p {
@@ -455,9 +681,22 @@
     width: 100%;
   }
   
+  .view-toggle {
+    justify-content: center;
+  }
+  
   .parking-grid {
     grid-template-columns: 1fr;
-    gap: 1rem;
+    padding: 0 1rem 2rem;
+    gap: 1.25rem;
+  }
+  
+  .card-content {
+    padding: 1.25rem;
+  }
+  
+  .location-name {
+    font-size: 1.2rem;
   }
   
   .info-grid {
@@ -465,55 +704,51 @@
   }
   
   .info-value {
-    font-size: 1rem;
+    font-size: 1.25rem;
+  }
+  
+  .map-view {
+    padding: 0 1rem;
+  }
+  
+  .filters-section {
+    padding: 0 1rem;
+  }
+  
+  .results-count {
+    padding: 0 1rem;
+  }
+  
+  .empty-state {
+    margin: 2rem 1rem;
+    padding: 2rem;
   }
 }
 
-/* Map View Container */
-.map-view {
-  margin: 1rem 0 2rem;
-  position: relative;
-  border-radius: 1rem;
-  overflow: hidden;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-  min-height: 500px;
-}
-
-/* Ensure Leaflet map takes full width */
-.leaflet-container {
-  width: 100%;
-  height: 500px;
-  background: var(--gray-900);
-  z-index: 1;
-}
-
-/* View Toggle */
-.view-toggle {
-  display: flex;
-  justify-content: center;
-  gap: 1rem;
-  margin: 1.5rem 0;
-}
-
-.view-btn {
-  padding: 0.75rem 2rem;
-  background: var(--gray-800);
-  border: 1px solid var(--gray-700);
-  border-radius: 0.75rem;
-  color: var(--gray-300);
-  cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
-.view-btn.active {
-  background: linear-gradient(135deg, var(--primary-green) 0%, var(--primary-green-dark) 100%);
-  color: var(--primary-black);
-  border-color: var(--primary-green);
-}
-
-.view-btn:hover:not(.active) {
-  background: var(--gray-700);
-  transform: translateY(-1px);
+@media (max-width: 480px) {
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .view-btn {
+    padding: 0.5rem 1.25rem;
+    font-size: 0.75rem;
+  }
+  
+  .book-btn {
+    padding: 0.75rem;
+  }
+  
+  .location-name {
+    font-size: 1.1rem;
+  }
+  
+  .info-value {
+    font-size: 1.1rem;
+  }
 }

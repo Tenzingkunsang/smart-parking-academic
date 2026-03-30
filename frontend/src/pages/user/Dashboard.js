@@ -6,8 +6,8 @@ import {
   Clock, 
   MapPin, 
   User, 
-  Calendar, 
-  Settings, 
+  Calendar,
+  Settings,
   LogOut,
   ChevronRight,
   Shield,
@@ -15,9 +15,7 @@ import {
   BarChart3,
   Smartphone
 } from 'lucide-react';
-import '../styles/Dashboard.css';
-
-const API_URL = 'http://localhost:5001/api';
+import '../../styles/Dashboard.css';const API_URL = 'http://localhost:5001/api';
 
 const Dashboard = () => {
   const [parkingStats, setParkingStats] = useState({

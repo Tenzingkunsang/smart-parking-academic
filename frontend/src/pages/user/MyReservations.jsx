@@ -1,14 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import './MyReservations.css';
 
 const MyReservations = () => {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
+    // Check if coming from successful payment
+    if (location.state?.success) {
+      setSuccessMessage(location.state.message || 'Booking confirmed successfully!');
+      // Clear the state after showing message
+      setTimeout(() => setSuccessMessage(''), 5000);
+    }
     fetchReservations();
   }, []);
 
@@ -41,7 +49,7 @@ const MyReservations = () => {
       'completed': { class: 'status-completed', text: 'Completed', icon: '✅' },
       'cancelled': { class: 'status-cancelled', text: 'Cancelled', icon: '❌' },
       'expired': { class: 'status-expired', text: 'Expired', icon: '⌛' },
-      'no-show': { class: 'status-no-show', text: 'No Show', icon: '⚠️' }
+      'no-show': { class: 'status-no-show', text: 'No Show (Auto-reallocated)', icon: '⚠️' }
     };
     const config = statusConfig[status] || statusConfig['reserved'];
     return (
@@ -72,7 +80,7 @@ const MyReservations = () => {
     if (!window.confirm('Are you sure you want to cancel this reservation?')) return;
     
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
       const response = await fetch(`http://localhost:5001/api/reservations/${reservationId}/cancel`, {
         method: 'PUT',
         headers: {
@@ -118,6 +126,23 @@ const MyReservations = () => {
       <div className="reservations-hero">
         <h1>My Reservations</h1>
         <p>View and manage your parking bookings</p>
+      </div>
+
+      {successMessage && (
+        <div className="success-banner">
+          <div className="success-icon">✅</div>
+          <div className="success-text">
+            <strong>{successMessage}</strong>
+          </div>
+          <button className="close-btn" onClick={() => setSuccessMessage('')}>×</button>
+        </div>
+      )}
+
+      <div className="info-banner">
+        <div className="info-icon">ℹ️</div>
+        <div className="info-text">
+          <strong>Dynamic Reallocation:</strong> If you don't check in within 15 minutes of your reservation time, your spot will be automatically reallocated to other users. This helps maximize parking availability.
+        </div>
       </div>
 
       <div className="reservations-content">

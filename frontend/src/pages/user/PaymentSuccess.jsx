@@ -54,7 +54,7 @@ const PaymentSuccess = () => {
             <span>NPR {paymentData?.total_amount ? paymentData.total_amount / 100 : 0}</span>
           </div>
         </div>
-        <button onClick={() => navigate('/parking')} className="btn-primary">
+        <button onClick={() => navigate('/reservations')} className="btn-primary">
           View My Bookings
         </button>
       </div>

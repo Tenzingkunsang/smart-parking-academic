@@ -1,4 +1,4 @@
-.login-container {
+.register-container {
   max-width: 500px;
   margin: 50px auto;
   padding: 30px;
@@ -7,7 +7,7 @@
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
-.login-title {
+.register-title {
   text-align: center;
   margin-bottom: 30px;
   color: #333;
@@ -39,7 +39,22 @@
   box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
 }
 
-.login-button {
+.form-group select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.form-group select:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+}
+
+.register-button {
   width: 100%;
   padding: 12px;
   background-color: #4CAF50;
@@ -52,7 +67,7 @@
   margin-top: 20px;
 }
 
-.login-button:hover {
+.register-button:hover {
   background-color: #45a049;
 }
 
@@ -79,8 +94,9 @@
   padding: 0 10px;
 }
 
-.google-login-section {
+.google-register-section {
   margin-top: 20px;
+  margin-bottom: 20px;
 }
 
 .google-button-container {
@@ -88,19 +104,19 @@
   justify-content: center;
 }
 
-.login-footer {
+.register-footer {
   text-align: center;
   margin-top: 20px;
   color: #666;
 }
 
-.login-footer a {
+.register-footer a {
   color: #4CAF50;
   text-decoration: none;
   font-weight: bold;
 }
 
-.login-footer a:hover {
+.register-footer a:hover {
   text-decoration: underline;
 }
 
@@ -123,12 +139,12 @@
 }
 
 @media (max-width: 600px) {
-  .login-container {
+  .register-container {
     margin: 20px;
     padding: 20px;
   }
 
-  .login-title {
+  .register-title {
     font-size: 22px;
   }
 }

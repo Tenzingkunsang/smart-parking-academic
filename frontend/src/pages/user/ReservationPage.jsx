@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import reservationService from '../services/reservationService';
-import parkingService from '../services/parkingService';
+import reservationService from '../../services/reservationService';
+import parkingService from '../../services/parkingService';
 import QRCode from 'qrcode.react';
 
 const ReservationPage = () => {

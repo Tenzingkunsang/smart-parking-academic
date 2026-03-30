@@ -21,16 +21,18 @@ const AdminDashboard = () => {
   }, []);
 
   const checkAdminAccess = () => {
+    const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.userType !== 'admin') {
-      navigate('/');
+    
+    if (!token || user.userType !== 'admin') {
+      navigate('/parking');
       alert('Admin access required');
     }
   };
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
       const response = await fetch('http://localhost:5001/api/admin/stats', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -120,4 +122,3 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
-EOF

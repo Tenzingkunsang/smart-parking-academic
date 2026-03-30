@@ -3,36 +3,30 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import '../styles/Navbar.css';
 
 const Navbar = () => {
-  const [user, setUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
-  const updateUserData = () => {
+  useEffect(() => {
     const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    const parsedUser = userStr ? JSON.parse(userStr) : null;
-    setUser(parsedUser);
+    const userData = localStorage.getItem('user');
+    
     setIsLoggedIn(!!token);
-    setIsAdmin(parsedUser?.userType === 'admin');
-    console.log('Navbar update - isAdmin:', parsedUser?.userType === 'admin');
-  };
-
-  useEffect(() => {
-    updateUserData();
-    window.addEventListener('storage', updateUserData);
-    return () => window.removeEventListener('storage', updateUserData);
-  }, []);
-
-  useEffect(() => {
-    updateUserData();
+    if (userData) {
+      const parsedUser = JSON.parse(userData);
+      setUser(parsedUser);
+      setIsAdmin(parsedUser.userType === 'admin');
+    }
   }, [location]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    updateUserData();
+    setIsLoggedIn(false);
+    setUser(null);
+    setIsAdmin(false);
     navigate('/');
   };
 
@@ -62,7 +56,7 @@ const Navbar = () => {
               <Link to="/reservations" className={`nav-link ${location.pathname === '/reservations' ? 'active' : ''}`}>
                 My Reservations
               </Link>
-
+              
               {isAdmin && (
                 <>
                   <Link to="/admin" className={`nav-link admin-link ${location.pathname === '/admin' ? 'active' : ''}`}>
@@ -76,11 +70,11 @@ const Navbar = () => {
                   </Link>
                 </>
               )}
-
+              
               <Link to="/profile" className={`nav-link ${location.pathname === '/profile' ? 'active' : ''}`}>
                 Profile
               </Link>
-
+              
               <div className="user-menu">
                 <span className="user-name">
                   {isAdmin ? 'Admin' : 'User'} | {user?.name?.split(' ')[0] || 'User'}

@@ -10,8 +10,8 @@ import {
   Calendar,
   MapPin
 } from 'lucide-react'; // Removed unused imports
-import '../styles/Profile.css';
-import '../styles/Auth.css';
+import '../../styles/Profile.css';
+import '../../styles/Auth.css';
 
 const API_URL = 'http://localhost:5001/api';
 
