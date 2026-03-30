@@ -16,6 +16,7 @@ import ReservationPage from './pages/user/ReservationPage';
 import PaymentPage from './pages/user/PaymentPage';
 import TicketPage from './pages/user/TicketPage';
 import PaymentSuccess from './pages/user/PaymentSuccess';
+import Notifications from './pages/user/Notifications';
 
 // Admin components
 import AdminDashboard from './pages/Admin/AdminDashboard';
@@ -110,6 +111,16 @@ function App() {
             
             {/* User Profile */}
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            
+            {/* Notifications */}
+            <Route
+              path="/notifications"
+              element={
+                <ProtectedRoute>
+                  <Notifications />
+                </ProtectedRoute>
+              }
+            />
             
             {/* Admin Routes */}
             <Route 
