@@ -13,6 +13,7 @@
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.13.2",
+    "framer-motion": "^11.18.2",
     "html5-qrcode": "^2.3.8",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.562.0",
@@ -20,15 +21,18 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "react-hot-toast": "^2.6.0",
     "react-icons": "^5.5.0",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.11.0",
     "react-scripts": "5.0.1",
     "socket.io-client": "^4.8.3",
+    "sweetalert2": "^11.26.24",
     "web-vitals": "^2.1.4"
+    
   },
   "scripts": {
-    "start": "react-scripts start",
+   "start": "GENERATE_SOURCEMAP=false react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -37,6 +41,7 @@
     "extends": [
       "react-app",
       "react-app/jest"
+      
     ]
   },
   "browserslist": {
@@ -50,5 +55,7 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+    
   }
+  
 }

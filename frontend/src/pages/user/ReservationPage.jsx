@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import reservationService from '../../services/reservationService';
 import parkingService from '../../services/parkingService';
-import QRCode from 'qrcode.react';
 
 const ReservationPage = () => {
   const { spotId } = useParams();
@@ -14,11 +13,7 @@ const ReservationPage = () => {
   const [booking, setBooking] = useState(null);
   const [step, setStep] = useState('details'); // details, payment, confirm
 
-  useEffect(() => {
-    fetchSpotDetails();
-  }, [spotId]);
-
-  const fetchSpotDetails = async () => {
+  const fetchSpotDetails = useCallback(async () => {
     try {
       let spotData;
       if (location.state?.spot) {
@@ -37,7 +32,11 @@ const ReservationPage = () => {
       alert('Failed to load parking spot details');
       navigate('/parking');
     }
-  };
+  }, [location.state, navigate, spotId]);
+
+  useEffect(() => {
+    fetchSpotDetails();
+  }, [fetchSpotDetails]);
 
   const calculateTotal = () => {
     const hours = Math.ceil(duration / 60);

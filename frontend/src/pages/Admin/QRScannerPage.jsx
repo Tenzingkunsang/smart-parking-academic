@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import './QRScannerPage.css';
@@ -10,6 +10,16 @@ const QRScannerPage = () => {
   const [action, setAction] = useState('checkin');
   const scannerRef = useRef(null);
   const navigate = useNavigate();
+  const scanningRef = useRef(scanning);
+  const actionRef = useRef(action);
+
+  useEffect(() => {
+    scanningRef.current = scanning;
+  }, [scanning]);
+
+  useEffect(() => {
+    actionRef.current = action;
+  }, [action]);
 
   useEffect(() => {
     // Initialize scanner when component mounts
@@ -35,10 +45,13 @@ const QRScannerPage = () => {
         scannerRef.current.clear();
       }
     };
+  // We intentionally initialize the scanner once; `onScanSuccess` reads latest
+  // state via refs (`actionRef`, `scanningRef`) so re-initialization is not needed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const onScanSuccess = async (decodedText, decodedResult) => {
-    if (!scanning) return;
+  const onScanSuccess = useCallback(async (decodedText) => {
+    if (!scanningRef.current) return;
     
     setScanning(false);
     try {
@@ -46,7 +59,7 @@ const QRScannerPage = () => {
       console.log('Scanned QR:', qrData);
       
       const token = localStorage.getItem('token');
-      const endpoint = action === 'checkin' ? '/checkin' : '/checkout';
+      const endpoint = actionRef.current === 'checkin' ? '/checkin' : '/checkout';
       
       const response = await fetch(`http://localhost:5001/api/reservations${endpoint}`, {
         method: 'POST',
@@ -79,11 +92,11 @@ const QRScannerPage = () => {
         setScanning(true);
       }, 2000);
     }
-  };
+  }, []);
 
-  const onScanError = (err) => {
+  const onScanError = useCallback((err) => {
     console.warn('Scan error:', err);
-  };
+  }, []);
 
   return (
     <div className="qr-scanner-page">

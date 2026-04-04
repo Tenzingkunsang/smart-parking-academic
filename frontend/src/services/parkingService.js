@@ -51,4 +51,5 @@ class ParkingService {
   }
 }
 
-export default new ParkingService();
+const parkingService = new ParkingService();
+export default parkingService;

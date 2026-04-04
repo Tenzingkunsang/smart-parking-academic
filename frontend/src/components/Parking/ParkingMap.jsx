@@ -1,9 +1,8 @@
-import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import React, { useEffect, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Fix for default marker icons
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -11,139 +10,190 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-const getMarkerIcon = (status) => {
-  const colors = {
-    available: '#22c55e',
-    reserved: '#eab308',
-    occupied: '#ef4444',
-    maintenance: '#6b7280'
-  };
-  const color = colors[status] || '#3b82f6';
-  
-  return L.divIcon({
-    className: 'custom-marker',
-    html: '<div style="background-color: ' + color + '; width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: white;">P</div>',
-    iconSize: [28, 28],
-    popupAnchor: [0, -14]
-  });
+/* Parking Blue (available) vs neutral grey (occupied) — instant contrast */
+const COLORS = {
+  available: '#0ea5e9',
+  reserved: '#f59e0b',
+  occupied: '#64748b',
+  cluster: '#7c3aed',
+  maintenance: '#475569',
 };
 
-const ParkingMap = ({ spots, onSpotClick }) => {
-  const mapRef = useRef(null);
-  const center = [27.7172, 85.3240];
+const DEFAULT_MAP_CENTER = [27.7172, 85.324];
 
-  // Cleanup on unmount
+const makeIcon = (color, label, size = 30, ring = false) =>
+  L.divIcon({
+    className: 'parking-map-marker',
+    html: `<div class="parking-pin-inner${ring ? ' parking-pin-ring' : ''}" style="--pin-color:${color};width:${size}px;height:${size}px"><span>${label}</span></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+  });
+
+function MapFocus({ position, zoom }) {
+  const map = useMap();
   useEffect(() => {
-    return () => {
-      if (mapRef.current) {
-        mapRef.current = null;
-      }
-    };
-  }, []);
+    if (position?.[0] != null && position?.[1] != null) {
+      map.flyTo(position, zoom ?? map.getZoom(), { duration: 0.55 });
+    }
+  }, [position, zoom, map]);
+  return null;
+}
 
-  if (!spots || spots.length === 0) {
+const ParkingMap = ({
+  clusters,
+  selectedSpotId,
+  hoveredSpotId,
+  onSpotClick,
+  onClusterClick,
+  onSpotHover,
+  userPosition,
+  defaultCenter,
+  defaultZoom = 13,
+}) => {
+  const center = useMemo(() => defaultCenter ?? DEFAULT_MAP_CENTER, [defaultCenter]);
+
+  const statusColor = (status) => {
+    switch (status) {
+      case 'available':
+        return COLORS.available;
+      case 'reserved':
+        return COLORS.reserved;
+      case 'occupied':
+        return COLORS.occupied;
+      default:
+        return COLORS.maintenance;
+    }
+  };
+
+  const focusPosition = useMemo(() => {
+    if (!selectedSpotId || !clusters?.length) return null;
+    for (const c of clusters) {
+      const hit = c.spots.find((s) => s._id === selectedSpotId);
+      if (hit) return [hit.location.lat, hit.location.lng];
+    }
+    return null;
+  }, [clusters, selectedSpotId]);
+
+  if (!clusters || clusters.length === 0) {
     return (
-      <div className="bg-gray-800 rounded-lg p-8 text-center border border-gray-700">
-        <p className="text-gray-400">No parking spots available to display on map</p>
+      <div className="parking-map-empty" role="status">
+        <p>No parking spots to show on the map.</p>
       </div>
     );
   }
 
   return (
-    <div style={{ position: 'relative', height: '500px', width: '100%' }}>
+    <div className="parking-map-wrap" aria-label="Parking map">
       <MapContainer
-        key={JSON.stringify(spots.map(s => s._id))}
         center={center}
-        zoom={13}
-        style={{ height: '100%', width: '100%', borderRadius: '12px' }}
-        whenCreated={(map) => { mapRef.current = map; }}
+        zoom={defaultZoom}
+        className="parking-map-container"
+        scrollWheelZoom
+        doubleClickZoom
+        touchZoom
+        zoomControl
+        preferCanvas
       >
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          attribution='&copy; <a href="https://carto.com/">CARTO</a>, &copy; OpenStreetMap'
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          subdomains="abcd"
+          maxZoom={20}
         />
-        
-        {spots.map((spot) => (
+        {focusPosition && <MapFocus position={focusPosition} zoom={16} />}
+
+        {userPosition && (
           <Marker
-            key={spot._id}
-            position={[spot.location.lat, spot.location.lng]}
-            icon={getMarkerIcon(spot.status)}
-            eventHandlers={{
-              click: () => onSpotClick(spot)
-            }}
-          >
-            <Popup>
-              <div style={{ minWidth: '180px' }}>
-                <h4 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 'bold' }}>
-                  {spot.locationName}
-                </h4>
-                <p style={{ margin: '4px 0', fontSize: '13px' }}>
-                  <strong>Spot #{spot.spotNumber}</strong>
-                </p>
-                <p style={{ margin: '4px 0', fontSize: '13px' }}>
-                  <span style={{ 
-                    color: spot.status === 'available' ? '#22c55e' : 
-                           spot.status === 'reserved' ? '#eab308' : '#ef4444'
-                  }}>
-                    {spot.status === 'available' ? '✓ Available' :
-                     spot.status === 'reserved' ? '⏰ Reserved' : '🔴 Occupied'}
-                  </span>
-                </p>
-                <p style={{ margin: '4px 0', fontSize: '13px', fontWeight: 'bold' }}>
-                  💰 NPR {spot.price}/hour
-                </p>
-                {spot.status === 'available' && (
-                  <button
-                    onClick={() => onSpotClick(spot)}
-                    style={{
-                      marginTop: '10px',
-                      width: '100%',
-                      padding: '6px 12px',
-                      backgroundColor: '#22c55e',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    Book Now
-                  </button>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+            position={[userPosition.lat, userPosition.lng]}
+            icon={makeIcon('#22c55e', '●', 22)}
+            interactive={false}
+          />
+        )}
+
+        {clusters.map((cluster) => {
+          const [lat, lng] = cluster.position;
+          if (cluster.isCluster) {
+            const ring = cluster.spots.some((s) => s._id === selectedSpotId || s._id === hoveredSpotId);
+            return (
+              <Marker
+                key={cluster.key}
+                position={[lat, lng]}
+                icon={makeIcon(COLORS.cluster, cluster.spots.length, 36, ring)}
+                eventHandlers={{
+                  click: () => onClusterClick(cluster.spots),
+                  mouseover: () => onSpotHover?.(null),
+                  mouseout: () => onSpotHover?.(null),
+                }}
+              >
+                <Popup>
+                  <div className="parking-map-popup">
+                    <strong>{cluster.spots.length} spots in this area</strong>
+                    <p className="parking-map-popup-hint">Tap to see Best value &amp; Closest</p>
+                    <button
+                      type="button"
+                      className="parking-map-popup-btn"
+                      onClick={() => onClusterClick(cluster.spots)}
+                    >
+                      Choose a spot
+                    </button>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          }
+
+          const spot = cluster.spots[0];
+          const ring = spot._id === selectedSpotId || spot._id === hoveredSpotId;
+          const color = statusColor(spot.status);
+          return (
+            <Marker
+              key={spot._id}
+              position={[lat, lng]}
+              icon={makeIcon(color, spot.status === 'available' ? 'P' : '•', 32, ring)}
+              eventHandlers={{
+                click: () => onSpotClick(spot),
+                mouseover: () => onSpotHover?.(spot._id),
+                mouseout: () => onSpotHover?.(null),
+              }}
+            >
+              <Popup>
+                <div className="parking-map-popup">
+                  <strong>{spot.locationName}</strong>
+                  <p className="parking-map-popup-meta">
+                    Spot #{spot.spotNumber} ·{' '}
+                    <span style={{ color }}>{spot.status}</span>
+                  </p>
+                  <p className="parking-map-popup-price">NPR {spot.price}/hr</p>
+                  {spot.status === 'available' && (
+                    <button
+                      type="button"
+                      className="parking-map-popup-btn"
+                      onClick={() => onSpotClick(spot)}
+                    >
+                      Book now
+                    </button>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
-      
-      {/* Map Legend */}
-      <div style={{
-        position: 'absolute',
-        bottom: '20px',
-        right: '20px',
-        background: 'rgba(0,0,0,0.85)',
-        padding: '8px 12px',
-        borderRadius: '8px',
-        fontSize: '11px',
-        zIndex: 1000,
-        backdropFilter: 'blur(5px)',
-        border: '1px solid rgba(255,255,255,0.1)'
-      }}>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ display: 'inline-block', width: '10px', height: '10px', background: '#22c55e', borderRadius: '50%' }}></span>
-            <span style={{ color: '#fff' }}>Available</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ display: 'inline-block', width: '10px', height: '10px', background: '#eab308', borderRadius: '50%' }}></span>
-            <span style={{ color: '#fff' }}>Reserved</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ display: 'inline-block', width: '10px', height: '10px', background: '#ef4444', borderRadius: '50%' }}></span>
-            <span style={{ color: '#fff' }}>Occupied</span>
-          </div>
-        </div>
+
+      <div className="parking-map-legend" aria-hidden="true">
+        <span>
+          <i style={{ background: COLORS.available }} /> Available
+        </span>
+        <span>
+          <i style={{ background: COLORS.reserved }} /> Reserved
+        </span>
+        <span>
+          <i style={{ background: COLORS.occupied }} /> Occupied
+        </span>
+        <span>
+          <i style={{ background: COLORS.cluster }} /> Cluster
+        </span>
       </div>
     </div>
   );

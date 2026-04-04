@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Dashboard from './pages/user/Dashboard';
@@ -26,6 +27,8 @@ import AdminUsers from './pages/Admin/AdminUsers';
 import QRScannerPage from './pages/Admin/QRScannerPage';
 
 import 'leaflet/dist/leaflet.css';
+import 'sweetalert2/dist/sweetalert2.min.css';
+import { Toaster } from 'react-hot-toast';
 import './App.css';
 
 const ProtectedRoute = ({ children }) => {
@@ -55,15 +58,36 @@ const PublicOnlyRoute = ({ children }) => {
 
 function App() {
   return (
-    <Router>
-      <div className="app">
-        <Navbar />
-        
-        <main className="main-content">
-          <Routes>
+    <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID || ''}>
+      <Router>
+        <div className="app">
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              duration: 4000,
+              className: 'app-toast',
+              style: {
+                background: '#1e293b',
+                color: '#f1f5f9',
+                border: '1px solid rgba(99, 102, 241, 0.35)',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+              },
+            }}
+          />
+          <Navbar />
+          
+          <main className="main-content">
+            <Routes>
             {/* Discovery & Search */}
             <Route path="/" element={<Dashboard />} />
-            <Route path="/parking" element={<ParkingSpots />} />
+            <Route
+              path="/parking"
+              element={
+                <ProtectedRoute>
+                  <ParkingSpots />
+                </ProtectedRoute>
+              }
+            />
             
             {/* My Reservations */}
             <Route 
@@ -166,12 +190,13 @@ function App() {
             
             {/* 404 - Not Found */}
             <Route path="*" element={<NotFound />} />
-          </Routes>
-        </main>
-        
-        <Footer />
-      </div>
-    </Router>
+            </Routes>
+          </main>
+          
+          <Footer />
+        </div>
+      </Router>
+    </GoogleOAuthProvider>
   );
 }
 

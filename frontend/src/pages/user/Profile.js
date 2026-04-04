@@ -12,8 +12,8 @@ import {
 } from 'lucide-react'; // Removed unused imports
 import '../../styles/Profile.css';
 import '../../styles/Auth.css';
-
-const API_URL = 'http://localhost:5001/api';
+import toast from 'react-hot-toast';
+import { API_BASE } from '../../config/api';
 
 const Profile = () => {
   const [user, setUser] = useState(null);
@@ -46,7 +46,7 @@ const Profile = () => {
   const handleEditSubmit = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.put(`${API_URL}/user/profile`, editData, {
+      const res = await axios.put(`${API_BASE}/user/profile`, editData, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -55,27 +55,27 @@ const Profile = () => {
         setUser(updatedUser);
         setEditMode(false);
         localStorage.setItem('user', JSON.stringify(updatedUser));
-        alert('Profile updated successfully!');
+        toast.success('Profile updated.');
       }
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to update profile');
+      toast.error(error.response?.data?.message || 'Failed to update profile');
     }
   };
 
   const handlePasswordChange = async () => {
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert('New passwords do not match');
+      toast.error('New passwords do not match');
       return;
     }
 
     if (passwordData.newPassword.length < 6) {
-      alert('Password must be at least 6 characters');
+      toast.error('Password must be at least 6 characters');
       return;
     }
 
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.put(`${API_URL}/user/change-password`, {
+      const res = await axios.put(`${API_BASE}/user/change-password`, {
         currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword
       }, {
@@ -83,7 +83,7 @@ const Profile = () => {
       });
 
       if (res.data.success) {
-        alert('Password changed successfully!');
+        toast.success('Password updated.');
         setPasswordModal(false);
         setPasswordData({
           currentPassword: '',
@@ -92,7 +92,7 @@ const Profile = () => {
         });
       }
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to change password');
+      toast.error(error.response?.data?.message || 'Failed to change password');
     }
   };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './AdminDashboard.css';
 
@@ -15,26 +15,21 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    checkAdminAccess();
-    fetchStats();
-  }, []);
-
-  const checkAdminAccess = () => {
+  const checkAdminAccess = useCallback(() => {
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    
+
     if (!token || user.userType !== 'admin') {
       navigate('/parking');
       alert('Admin access required');
     }
-  };
+  }, [navigate]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const token = localStorage.getItem('authToken') || localStorage.getItem('token');
       const response = await fetch('http://localhost:5001/api/admin/stats', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
       if (data.success) {
@@ -45,7 +40,12 @@ const AdminDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    checkAdminAccess();
+    fetchStats();
+  }, [checkAdminAccess, fetchStats]);
 
   if (loading) {
     return <div className="admin-loading">Loading dashboard...</div>;

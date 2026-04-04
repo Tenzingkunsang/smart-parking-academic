@@ -1,4 +1,5 @@
-import React from 'react';
+import React from 'react';  
+import './ParkingSpotcard.css';
 
 const ParkingSpotCard = ({ spot, onBook, onViewDetails }) => {
   const getStatusColor = (status) => {

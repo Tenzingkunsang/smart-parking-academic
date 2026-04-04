@@ -5,20 +5,20 @@
 
 /* CSS Variables */
 :root {
-  --primary-black: #000000;
-  --primary-green: #00ff00;
-  --primary-green-dark: #00cc00;
-  --primary-green-light: #33ff33;
-  --gray-100: #f5f5f5;
-  --gray-200: #e5e5e5;
-  --gray-300: #d4d4d4;
-  --gray-400: #a3a3a3;
-  --gray-500: #737373;
-  --gray-600: #525252;
-  --gray-700: #404040;
-  --gray-800: #262626;
-  --gray-900: #171717;
-  --gray-950: #0a0a0a;
+  --primary-black: #0f172a;
+  --primary-green: #22d3a6;
+  --primary-green-dark: #12a27f;
+  --primary-green-light: #52f3c6;
+  --gray-100: #e6eefc;
+  --gray-200: rgba(255, 255, 255, 0.14);
+  --gray-300: rgba(147, 169, 194, 0.95);
+  --gray-400: rgba(147, 169, 194, 0.85);
+  --gray-500: rgba(91, 107, 133, 0.95);
+  --gray-600: rgba(75, 85, 99, 0.95);
+  --gray-700: rgba(55, 65, 81, 0.95);
+  --gray-800: #1e293b;
+  --gray-900: #0f172a;
+  --gray-950: #0b1324;
   --shadow-sm: 0 4px 6px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 16px rgba(0, 0, 0, 0.3);
   --transition: all 0.3s ease;

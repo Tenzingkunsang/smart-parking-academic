@@ -1,9 +1,11 @@
- import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { Mail, Lock, Key, ArrowLeft } from 'lucide-react';
+import { API_BASE } from '../../config/api';
+import '../../styles/Auth.css';
 
-const API_URL = 'http://localhost:5001/api';
+const API_URL = API_BASE;
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
@@ -17,7 +19,7 @@ const ForgotPassword = () => {
   const navigate = useNavigate();
 
   const handleEmailSubmit = async (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     setLoading(true);
     setError('');
     

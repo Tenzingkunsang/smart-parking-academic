@@ -18,9 +18,9 @@ class ReservationService {
     return response.data;
   }
 
-  // Get active reservation
+  // Checked-in parking session (live timer on dashboard)
   async getActiveReservation() {
-    const response = await api.get('/reservations/active');
+    const response = await api.get('/reservations/session');
     return response.data;
   }
 
@@ -43,4 +43,5 @@ class ReservationService {
   }
 }
 
-export default new ReservationService();
+const reservationService = new ReservationService();
+export default reservationService;

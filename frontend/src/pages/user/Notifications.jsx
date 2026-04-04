@@ -12,6 +12,7 @@ const Notifications = () => {
   const [filter, setFilter] = useState('all'); // all | unread
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [now, setNow] = useState(Date.now());
 
   const token = useMemo(() => localStorage.getItem('token'), []);
 
@@ -57,6 +58,12 @@ const Notifications = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
+  useEffect(() => {
+    // Keep countdown timers fresh (only lightweight local state updates).
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleMarkAllRead = async () => {
     try {
       await fetch(`${API_BASE}/notifications/read/all`, {
@@ -89,6 +96,45 @@ const Notifications = () => {
       fetchUnreadCount().catch(() => {});
     } catch (e) {
       setError('Could not mark notification as read.');
+    }
+  };
+
+  const formatTimeLeft = (expiresAt) => {
+    if (!expiresAt) return '';
+    const target = new Date(expiresAt).getTime();
+    const diff = target - now;
+    if (diff <= 0) return 'Expired';
+    const m = Math.floor(diff / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
+  const handleArrivalResponse = async (n, responseValue) => {
+    try {
+      setError('');
+      const reservationId = n?.meta?.reservationId;
+      if (!reservationId) return;
+
+      const res = await fetch(`${API_BASE}/reservations/${reservationId}/arrival-response`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ response: responseValue })
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.message || 'Request failed');
+        return;
+      }
+
+      // Refresh UI so countdown resets / new notification appears
+      await fetchUnreadCount();
+      await fetchNotifications();
+    } catch (e) {
+      setError('Could not submit your response. Please try again.');
     }
   };
 
@@ -180,17 +226,41 @@ const Notifications = () => {
                   <div className="notification-message">{n.message}</div>
                   <div className="notification-meta">
                     <span>{new Date(n.createdAt).toLocaleString()}</span>
+                    {n?.type === 'arrival_confirmation' && n?.meta?.expiresAt && (
+                      <span className="arrival-countdown-pill">
+                        Expires in {formatTimeLeft(n.meta.expiresAt)}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="notification-actions">
-                  {!n.read && (
-                    <button
-                      type="button"
-                      className="small-btn"
-                      onClick={() => handleMarkRead(n._id)}
-                    >
-                      Mark read
-                    </button>
+                  {n?.type === 'arrival_confirmation' && !n.read ? (
+                    <>
+                      <button
+                        type="button"
+                        className="small-btn"
+                        onClick={() => handleArrivalResponse(n, 'coming')}
+                      >
+                        I'm coming
+                      </button>
+                      <button
+                        type="button"
+                        className="small-btn secondary"
+                        onClick={() => handleArrivalResponse(n, 'not_coming')}
+                      >
+                        Can't make it
+                      </button>
+                    </>
+                  ) : (
+                    !n.read && (
+                      <button
+                        type="button"
+                        className="small-btn"
+                        onClick={() => handleMarkRead(n._id)}
+                      >
+                        Mark read
+                      </button>
+                    )
                   )}
                   <button
                     type="button"

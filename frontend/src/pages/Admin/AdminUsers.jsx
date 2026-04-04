@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './AdminUsers.css';
 
@@ -8,24 +8,19 @@ const AdminUsers = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    checkAdminAccess();
-    fetchUsers();
-  }, []);
-
-  const checkAdminAccess = () => {
+  const checkAdminAccess = useCallback(() => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     if (user.userType !== 'admin') {
       navigate('/');
       alert('Admin access required');
     }
-  };
+  }, [navigate]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch('http://localhost:5001/api/admin/users', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
       if (data.success) {
@@ -38,7 +33,12 @@ const AdminUsers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    checkAdminAccess();
+    fetchUsers();
+  }, [checkAdminAccess, fetchUsers]);
 
   const handleRoleChange = async (userId, newRole) => {
     if (!window.confirm(`Change this user's role to ${newRole}?`)) return;

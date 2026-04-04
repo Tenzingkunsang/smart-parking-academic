@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { API_BASE } from '../../config/api';
 import './PaymentPage.css';
 
 const PaymentPage = () => {
@@ -18,7 +20,7 @@ const PaymentPage = () => {
 
   const handlePayment = async () => {
     if (!paymentMethod) {
-      alert('Please select a payment method');
+      toast.error('Please select a payment method');
       return;
     }
     
@@ -27,13 +29,13 @@ const PaymentPage = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        alert('Please login again to continue payment');
+        toast.error('Please sign in again to continue');
         navigate('/login');
         return;
       }
 
       if (paymentMethod === 'khalti') {
-        const response = await fetch('http://localhost:5001/api/payments/khalti/initiate', {
+        const response = await fetch(`${API_BASE}/payments/khalti/initiate`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -48,11 +50,11 @@ const PaymentPage = () => {
           return;
         }
 
-        alert(data.message || 'Failed to initiate Khalti payment');
+        toast.error(data.message || 'Failed to initiate Khalti payment');
         return;
       }
 
-      const response = await fetch(`http://localhost:5001/api/reservations/confirm/${pendingReservationId}`, {
+      const response = await fetch(`${API_BASE}/reservations/confirm/${pendingReservationId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -67,11 +69,15 @@ const PaymentPage = () => {
       const data = await response.json();
       
       if (!data.success) {
-        alert(data.message || 'Payment confirmation failed');
+        toast.error(data.message || 'Payment confirmation failed');
         return;
       }
 
       const reservation = data.data;
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(120);
+      }
+      toast.success('Payment successful!');
       navigate('/ticket', {
         state: {
           spot,
@@ -84,7 +90,7 @@ const PaymentPage = () => {
       });
     } catch (error) {
       console.error('Payment error:', error);
-      alert('Payment failed. Please try again.');
+      toast.error('Payment failed. Please try again.');
     } finally {
       setLoading(false);
     }

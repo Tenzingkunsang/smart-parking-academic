@@ -1,32 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import Swal from 'sweetalert2';
+import toast from 'react-hot-toast';
+import { Search } from 'lucide-react';
+import { API_BASE } from '../../config/api';
 import './MyReservations.css';
 
 const MyReservations = () => {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [cancellingId, setCancellingId] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    // Check if coming from successful payment
     if (location.state?.success) {
-      setSuccessMessage(location.state.message || 'Booking confirmed successfully!');
-      // Clear the state after showing message
-      setTimeout(() => setSuccessMessage(''), 5000);
+      toast.success(location.state.message || 'Booking confirmed!');
     }
     fetchReservations();
-  }, []);
+  }, [location.state?.success, location.state?.message]);
 
   const fetchReservations = async () => {
+    setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5001/api/reservations/my', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await fetch(`${API_BASE}/reservations/my`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
       if (data.success) {
@@ -42,26 +42,62 @@ const MyReservations = () => {
     }
   };
 
-  const getStatusBadge = (status) => {
-    const statusConfig = {
-      'reserved': { class: 'status-reserved', text: 'Reserved', icon: '⏰' },
-      'checked-in': { class: 'status-checked-in', text: 'Checked In', icon: '✓' },
-      'completed': { class: 'status-completed', text: 'Completed', icon: '✅' },
-      'cancelled': { class: 'status-cancelled', text: 'Cancelled', icon: '❌' },
-      'expired': { class: 'status-expired', text: 'Expired', icon: '⌛' },
-      'no-show': { class: 'status-no-show', text: 'No Show (Auto-reallocated)', icon: '⚠️' }
+  const getStatusConfig = (status) => {
+    const configs = {
+      'reserved': { 
+        class: 'status-reserved', 
+        text: 'Confirmed', 
+        icon: '✓',
+        color: '#2563eb',
+        bg: 'rgba(37, 99, 235, 0.1)'
+      },
+      'checked-in': { 
+        class: 'status-checked-in', 
+        text: 'Active', 
+        icon: '●',
+        color: '#10b981',
+        bg: 'rgba(16, 185, 129, 0.1)'
+      },
+      'completed': { 
+        class: 'status-completed', 
+        text: 'Completed', 
+        icon: '✓',
+        color: '#6b7280',
+        bg: 'rgba(107, 114, 128, 0.1)'
+      },
+      'cancelled': { 
+        class: 'status-cancelled', 
+        text: 'Cancelled', 
+        icon: '✕',
+        color: '#ef4444',
+        bg: 'rgba(239, 68, 68, 0.1)'
+      },
+      'expired': { 
+        class: 'status-expired', 
+        text: 'Expired', 
+        icon: '!',
+        color: '#f59e0b',
+        bg: 'rgba(245, 158, 11, 0.1)'
+      }
     };
-    const config = statusConfig[status] || statusConfig['reserved'];
-    return (
-      <span className={`status-badge ${config.class}`}>
-        <span>{config.icon}</span>
-        <span>{config.text}</span>
-      </span>
-    );
+    return configs[status] || configs['reserved'];
   };
 
-  const getVehicleIcon = (type) => {
-    return type === 'car' ? '🚗' : '🛵';
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const formatTime = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit'
+    });
   };
 
   const handleViewTicket = (reservation) => {
@@ -70,18 +106,35 @@ const MyReservations = () => {
         spot: reservation.parkingSpot,
         duration: reservation.duration,
         totalAmount: reservation.totalAmount,
-        paymentMethod: 'Khalti',
-        bookingId: reservation._id
+        paymentMethod: 'Online Payment',
+        bookingId: reservation._id,
+        reservationTime: reservation.reservationTime,
+        status: reservation.status
       }
     });
   };
 
   const handleCancelReservation = async (reservationId) => {
-    if (!window.confirm('Are you sure you want to cancel this reservation?')) return;
-    
+    const result = await Swal.fire({
+      title: 'Cancel this reservation?',
+      html: '<p style="text-align:left;margin:0;font-size:15px;line-height:1.5">This action cannot be undone. Your spot will be released and may be booked by another driver.</p>',
+      icon: 'warning',
+      showCancelButton: true,
+      focusCancel: true,
+      confirmButtonText: 'Yes, cancel',
+      cancelButtonText: 'Keep booking',
+      confirmButtonColor: '#6366f1',
+      cancelButtonColor: '#64748b',
+      background: '#1e293b',
+      color: '#f1f5f9',
+    });
+
+    if (!result.isConfirmed) return;
+
+    setCancellingId(reservationId);
     try {
-      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5001/api/reservations/${reservationId}/cancel`, {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/reservations/${reservationId}/cancel`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -89,22 +142,31 @@ const MyReservations = () => {
         }
       });
       const data = await response.json();
+      
       if (data.success) {
-        alert('Reservation cancelled successfully');
+        toast.success('Booking cancelled.');
         fetchReservations();
       } else {
-        alert(data.message || 'Failed to cancel reservation');
+        toast.error(data.message || 'Failed to cancel reservation');
       }
     } catch (error) {
       console.error('Error cancelling reservation:', error);
-      alert('Failed to cancel reservation');
+      toast.error('Failed to cancel reservation. Please try again.');
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const handleCheckOut = (reservation) => {
+    if (window.confirm('Confirm check-out? This will complete your parking session.')) {
+      alert('Check-out initiated. Please visit the parking exit gate.');
     }
   };
 
   if (loading) {
     return (
       <div className="reservations-loading">
-        <div className="spinner"></div>
+        <div className="loading-spinner"></div>
         <p>Loading your reservations...</p>
       </div>
     );
@@ -114,140 +176,177 @@ const MyReservations = () => {
     return (
       <div className="reservations-error">
         <div className="error-icon">⚠️</div>
-        <h3>Error Loading Reservations</h3>
+        <h3>Unable to Load Reservations</h3>
         <p>{error}</p>
-        <button onClick={fetchReservations} className="retry-btn">Try Again</button>
+        <button onClick={fetchReservations} className="retry-button">
+          Try Again
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="reservations-container">
-      <div className="reservations-hero">
-        <h1>My Reservations</h1>
-        <p>View and manage your parking bookings</p>
-      </div>
-
-      {successMessage && (
-        <div className="success-banner">
-          <div className="success-icon">✅</div>
-          <div className="success-text">
-            <strong>{successMessage}</strong>
+    <div className="reservations-page">
+      {/* Page Header - Full Width */}
+      <div className="page-header">
+        <div className="header-content">
+          <div>
+            <h1>My Reservations</h1>
+            <p>View and manage your parking bookings</p>
           </div>
-          <button className="close-btn" onClick={() => setSuccessMessage('')}>×</button>
-        </div>
-      )}
-
-      <div className="info-banner">
-        <div className="info-icon">ℹ️</div>
-        <div className="info-text">
-          <strong>Dynamic Reallocation:</strong> If you don't check in within 15 minutes of your reservation time, your spot will be automatically reallocated to other users. This helps maximize parking availability.
+          <button className="book-new-btn" onClick={() => navigate('/parking')}>
+            + New Booking
+          </button>
         </div>
       </div>
 
-      <div className="reservations-content">
+      {/* Info Banner */}
+      <div className="info-banner">
+        <div className="banner-container">
+          <div className="banner-icon">ℹ️</div>
+          <div className="banner-text">
+            <strong>Important:</strong> If you don't check in within 15 minutes of your reservation time, 
+            your spot may be reallocated to other users.
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Container */}
+      <div className="reservations-container">
         {reservations.length === 0 ? (
-          <div className="empty-reservations">
-            <div className="empty-icon">📅</div>
-            <h3>No Reservations Yet</h3>
-            <p>You haven't made any parking reservations yet.</p>
-            <button onClick={() => navigate('/parking')} className="book-now-btn">
-              Find Parking Now
+          <div className="empty-state">
+            <div className="empty-icon empty-icon-svg" aria-hidden>
+              <Search size={48} strokeWidth={1.25} />
+            </div>
+            <h3>No reservations yet</h3>
+            <p>Nothing to show here. Search for a zone and book a spot — your sessions will appear in this list.</p>
+            <button type="button" className="find-parking-btn" onClick={() => navigate('/parking')}>
+              Find parking
             </button>
           </div>
         ) : (
-          <div className="reservations-list">
-            {reservations.map((reservation) => (
-              <div key={reservation._id} className="reservation-card">
-                <div className="card-header">
-                  <div className="spot-info">
-                    <h3>{reservation.parkingSpot.locationName}</h3>
-                    <p className="spot-address">
-                      📍 {reservation.parkingSpot.location.address || 'Kathmandu'}
-                    </p>
-                  </div>
-                  {getStatusBadge(reservation.status)}
-                </div>
-
-                <div className="card-details">
-                  <div className="detail-row">
-                    <span className="detail-label">Spot Number</span>
-                    <span className="detail-value">#{reservation.parkingSpot.spotNumber}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Vehicle Type</span>
-                    <span className="detail-value">
-                      {getVehicleIcon(reservation.parkingSpot.vehicleType)} {reservation.parkingSpot.vehicleType}
-                    </span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Duration</span>
-                    <span className="detail-value">{reservation.duration} minutes</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Reservation Time</span>
-                    <span className="detail-value">
-                      {new Date(reservation.reservationTime).toLocaleString()}
-                    </span>
-                  </div>
-                  {reservation.checkInTime && (
-                    <div className="detail-row">
-                      <span className="detail-label">Check-in Time</span>
-                      <span className="detail-value">
-                        {new Date(reservation.checkInTime).toLocaleString()}
-                      </span>
+          <div className="reservations-grid">
+            {reservations.map((reservation) => {
+              const statusConfig = getStatusConfig(reservation.status);
+              
+              return (
+                <div key={reservation._id} className="reservation-card">
+                  {/* Card Header */}
+                  <div className="card-header">
+                    <div className="spot-info">
+                      <h3>{reservation.parkingSpot?.locationName || 'Parking Spot'}</h3>
+                      <div className="spot-location">
+                        📍 {reservation.parkingSpot?.location?.address || 'Kathmandu, Nepal'}
+                      </div>
                     </div>
-                  )}
-                  {reservation.checkOutTime && (
-                    <div className="detail-row">
-                      <span className="detail-label">Check-out Time</span>
-                      <span className="detail-value">
-                        {new Date(reservation.checkOutTime).toLocaleString()}
-                      </span>
+                    <div 
+                      className="status-badge"
+                      style={{
+                        background: statusConfig.bg,
+                        color: statusConfig.color
+                      }}
+                    >
+                      <span className="status-icon">{statusConfig.icon}</span>
+                      <span>{statusConfig.text}</span>
                     </div>
-                  )}
-                  <div className="detail-row">
-                    <span className="detail-label">Total Amount</span>
-                    <span className="detail-value amount">NPR {reservation.totalAmount || 0}</span>
+                  </div>
+
+                  {/* Card Body */}
+                  <div className="card-body">
+                    <div className="details-grid">
+                      <div className="detail-item">
+                        <label>Spot Number</label>
+                        <span>#{reservation.parkingSpot?.spotNumber || 'N/A'}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Vehicle Type</label>
+                        <span>
+                          {reservation.parkingSpot?.vehicleType === 'car' ? '🚗 Car' : '🛵 Bike'}
+                        </span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Duration</label>
+                        <span>{reservation.duration} mins</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Reservation Date</label>
+                        <span>{formatDate(reservation.reservationTime)}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Reservation Time</label>
+                        <span>{formatTime(reservation.reservationTime)}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Total Amount</label>
+                        <span className="amount">Rs. {reservation.totalAmount || 0}</span>
+                      </div>
+                    </div>
+
+                    {reservation.checkInTime && (
+                      <div className="checkin-info">
+                        <div className="checkin-icon">✓</div>
+                        <div>
+                          <strong>Checked in</strong> at {formatTime(reservation.checkInTime)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card Footer */}
+                  <div className="card-footer">
+                    {reservation.status === 'reserved' && (
+                      <>
+                        <button 
+                          className="btn-view-ticket"
+                          onClick={() => handleViewTicket(reservation)}
+                        >
+                          View Ticket
+                        </button>
+                        <button 
+                          className="btn-cancel"
+                          onClick={() => handleCancelReservation(reservation._id)}
+                          disabled={cancellingId === reservation._id}
+                        >
+                          {cancellingId === reservation._id ? 'Cancelling...' : 'Cancel'}
+                        </button>
+                      </>
+                    )}
+                    
+                    {reservation.status === 'checked-in' && (
+                      <>
+                        <button 
+                          className="btn-view-ticket"
+                          onClick={() => handleViewTicket(reservation)}
+                        >
+                          View Ticket
+                        </button>
+                        <button 
+                          className="btn-checkout"
+                          onClick={() => handleCheckOut(reservation)}
+                        >
+                          Check Out
+                        </button>
+                      </>
+                    )}
+                    
+                    {reservation.status === 'completed' && (
+                      <button 
+                        className="btn-view-receipt"
+                        onClick={() => handleViewTicket(reservation)}
+                      >
+                        View Receipt
+                      </button>
+                    )}
+                    
+                    {(reservation.status === 'cancelled' || reservation.status === 'expired') && (
+                      <div className="inactive-message">
+                        {reservation.status === 'cancelled' ? 'This booking was cancelled' : 'This booking has expired'}
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                <div className="card-actions">
-                  {reservation.status === 'reserved' && (
-                    <button 
-                      onClick={() => handleViewTicket(reservation)}
-                      className="action-btn view-ticket"
-                    >
-                      View Ticket
-                    </button>
-                  )}
-                  {reservation.status === 'reserved' && (
-                    <button 
-                      onClick={() => handleCancelReservation(reservation._id)}
-                      className="action-btn cancel"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                  {reservation.status === 'checked-in' && (
-                    <button 
-                      onClick={() => alert('Please check out at the parking location')}
-                      className="action-btn check-out"
-                    >
-                      Check Out
-                    </button>
-                  )}
-                  {reservation.status === 'completed' && (
-                    <button 
-                      onClick={() => handleViewTicket(reservation)}
-                      className="action-btn view-ticket"
-                    >
-                      View Receipt
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

@@ -1,77 +1,168 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { MapPin } from 'lucide-react';
 import './BookingModal.css';
 
+const PLATE_KEY = 'vehiclePlate';
+
 const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
+  const [step, setStep] = useState(1);
   const [duration, setDuration] = useState(60);
   const [loading, setLoading] = useState(false);
+  const [vehiclePlate, setVehiclePlate] = useState(() => localStorage.getItem(PLATE_KEY) || '');
+
+  useEffect(() => {
+    if (isOpen) {
+      setStep(1);
+      setVehiclePlate(localStorage.getItem(PLATE_KEY) || '');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const addressLine = spot.address || spot.location?.address || '—';
 
   const calculateTotal = () => {
     const hours = Math.ceil(duration / 60);
     return hours * spot.price;
   };
 
-  const handleConfirm = async () => {
+  const handleFinalConfirm = async () => {
     setLoading(true);
-    await onConfirm(spot._id, duration);
-    setLoading(false);
+    try {
+      await onConfirm(spot._id, duration);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const hoursLabel = Math.ceil(duration / 60);
+  const total = calculateTotal();
+
   return (
-    <div className="modal-overlay">
-      <div className="modal-container">
+    <div className="modal-overlay" role="presentation" onClick={onClose}>
+      <div
+        className="modal-container"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="booking-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>Book Parking Spot</h2>
-          <button onClick={onClose} className="modal-close">&times;</button>
-        </div>
-        
-        <div className="modal-body">
-          <div className="spot-info">
-            <h3>{spot.locationName}</h3>
-            <p className="spot-address">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
-                <circle cx="12" cy="9" r="3" />
-              </svg>
-              {spot.location.address || 'Kathmandu'}
-            </p>
-            <p className="spot-number">Spot #{spot.spotNumber}</p>
-          </div>
-
-          <div className="duration-selector">
-            <label>Select Duration</label>
-            <select value={duration} onChange={(e) => setDuration(parseInt(e.target.value))}>
-              <option value={30}>30 minutes</option>
-              <option value={60}>1 hour</option>
-              <option value={120}>2 hours</option>
-              <option value={180}>3 hours</option>
-              <option value={240}>4 hours</option>
-            </select>
-          </div>
-
-          <div className="price-breakdown">
-            <div className="price-row">
-              <span>Hourly Rate</span>
-              <span>NPR {spot.price}</span>
-            </div>
-            <div className="price-row">
-              <span>Duration</span>
-              <span>{Math.ceil(duration / 60)} hour(s)</span>
-            </div>
-            <div className="price-row total">
-              <span>Total Amount</span>
-              <span className="total-amount">NPR {calculateTotal()}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleConfirm} disabled={loading} className="btn-primary">
-            {loading ? 'Processing...' : 'Proceed to Payment'}
+          <h2 id="booking-modal-title">
+            {step === 1 ? 'Book parking' : 'Confirm booking'}
+          </h2>
+          <button type="button" onClick={onClose} className="modal-close" aria-label="Close">
+            &times;
           </button>
         </div>
+
+        {step === 1 ? (
+          <>
+            <div className="modal-body">
+              <div className="spot-info">
+                <h3>{spot.locationName}</h3>
+                <p className="spot-address">
+                  <MapPin size={14} aria-hidden />
+                  {addressLine}
+                </p>
+                <p className="spot-number">Spot #{spot.spotNumber}</p>
+              </div>
+
+              <div className="duration-selector">
+                <label htmlFor="vehicle-plate">Vehicle plate (optional)</label>
+                <input
+                  id="vehicle-plate"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="e.g. BA 1 PA 1234"
+                  value={vehiclePlate}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setVehiclePlate(v);
+                    if (v.trim()) localStorage.setItem(PLATE_KEY, v.trim());
+                    else localStorage.removeItem(PLATE_KEY);
+                  }}
+                />
+              </div>
+
+              <div className="duration-selector">
+                <label htmlFor="booking-duration">Duration</label>
+                <select
+                  id="booking-duration"
+                  value={duration}
+                  onChange={(e) => setDuration(parseInt(e.target.value, 10))}
+                >
+                  <option value={30}>30 minutes</option>
+                  <option value={60}>1 hour</option>
+                  <option value={120}>2 hours</option>
+                  <option value={180}>3 hours</option>
+                  <option value={240}>4 hours</option>
+                </select>
+              </div>
+
+              <div className="price-breakdown">
+                <div className="price-row">
+                  <span>Hourly rate</span>
+                  <span>NPR {spot.price}</span>
+                </div>
+                <div className="price-row">
+                  <span>Billed duration</span>
+                  <span>
+                    {hoursLabel} hour{hoursLabel !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="price-row total">
+                  <span>Estimated total</span>
+                  <span className="total-amount">NPR {total}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" onClick={onClose} className="btn-secondary">
+                Cancel
+              </button>
+              <button type="button" onClick={() => setStep(2)} className="btn-primary">
+                Review &amp; confirm
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="modal-body">
+              <p className="confirm-lead">Please confirm your booking details before payment.</p>
+              <div className="confirm-summary">
+                <div className="confirm-row">
+                  <span>Location</span>
+                  <strong>{spot.locationName}</strong>
+                </div>
+                <div className="confirm-row">
+                  <span>Spot</span>
+                  <strong>#{spot.spotNumber}</strong>
+                </div>
+                <div className="confirm-row">
+                  <span>Duration</span>
+                  <strong>
+                    {duration} min ({hoursLabel} hr billed)
+                  </strong>
+                </div>
+                <div className="confirm-row highlight">
+                  <span>Total due</span>
+                  <strong className="confirm-total">NPR {total}</strong>
+                </div>
+              </div>
+              <p className="confirm-hint">You can choose a payment method on the next screen.</p>
+            </div>
+            <div className="modal-footer">
+              <button type="button" onClick={() => setStep(1)} className="btn-secondary" disabled={loading}>
+                Back
+              </button>
+              <button type="button" onClick={handleFinalConfirm} disabled={loading} className="btn-primary">
+                {loading ? 'Processing…' : 'Confirm booking'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
