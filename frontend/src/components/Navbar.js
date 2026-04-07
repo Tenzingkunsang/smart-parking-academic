@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Bell, LogOut, CarFront } from 'lucide-react';
-import { API_BASE } from '../config/api';
+import { API_BASE, getAuthToken } from '../config/api';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -47,38 +47,63 @@ const Navbar = () => {
     navigate('/');
   };
 
-  useEffect(() => {
-    if (!isLoggedIn) return;
-
-    const token = localStorage.getItem('token');
+  const refreshNotifications = async () => {
+    const token = getAuthToken();
     if (!token) return;
 
-    const fetchUnread = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/notifications/unread/count`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.success) setUnreadCount(data.data?.unreadCount || 0);
-      } catch (e) {
-        // ignore
-      }
-    };
+    try {
+      const res = await fetch(`${API_BASE}/notifications/unread/count`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) setUnreadCount(data.data?.unreadCount || 0);
+    } catch (e) {
+      // ignore
+    }
 
-    const fetchPreview = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/notifications?limit=5&skip=0`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.success) setPreview(data.data?.notifications || []);
-      } catch (e) {
-        // ignore
-      }
-    };
+    try {
+      const res = await fetch(`${API_BASE}/notifications?limit=8&skip=0`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) setPreview(data.data?.notifications || []);
+    } catch (e) {
+      // ignore
+    }
+  };
 
-    fetchUnread();
-    fetchPreview();
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setUnreadCount(0);
+      setPreview([]);
+      return;
+    }
+    refreshNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, location.pathname]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !dropdownOpen) return;
+    refreshNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropdownOpen]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const tick = () => {
+      const token = getAuthToken();
+      if (!token) return;
+      fetch(`${API_BASE}/notifications/unread/count`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success) setUnreadCount(data.data?.unreadCount || 0);
+        })
+        .catch(() => {});
+    };
+    const id = setInterval(tick, 45000);
+    return () => clearInterval(id);
   }, [isLoggedIn]);
 
   useEffect(() => {
@@ -93,7 +118,7 @@ const Navbar = () => {
 
   const markRead = async (id) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
       if (!token) return;
 
       await fetch(`${API_BASE}/notifications/${id}/read`, {

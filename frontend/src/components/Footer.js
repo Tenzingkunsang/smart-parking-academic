@@ -13,7 +13,8 @@ const Footer = () => {
               and clear reservation updates.
             </p>
             <p style={{ marginTop: '10px' }}>
-              Built for the Academic Sandbox: React, Node.js, MongoDB.
+              Designed for busy streets, SmartPark helps you find and book parking
+              spots effortlessly, so you can focus on what matters most.
             </p>
           </div>
           

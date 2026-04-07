@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Html5QrcodeScanner } from 'html5-qrcode';
+import { API_BASE } from '../../config/api';
 import './QRScannerPage.css';
 
 const QRScannerPage = () => {
@@ -61,7 +62,7 @@ const QRScannerPage = () => {
       const token = localStorage.getItem('token');
       const endpoint = actionRef.current === 'checkin' ? '/checkin' : '/checkout';
       
-      const response = await fetch(`http://localhost:5001/api/reservations${endpoint}`, {
+      const response = await fetch(`${API_BASE}/reservations${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

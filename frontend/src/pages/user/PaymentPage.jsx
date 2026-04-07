@@ -98,7 +98,6 @@ const PaymentPage = () => {
 
   const paymentMethods = [
     { id: 'khalti', name: 'Khalti', description: 'Pay with Khalti wallet' },
-    { id: 'esewa', name: 'eSewa', description: 'Pay with eSewa wallet' },
     { id: 'cash', name: 'Cash', description: 'Pay at the parking location' }
   ];
 

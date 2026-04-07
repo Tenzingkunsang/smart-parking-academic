@@ -52,6 +52,13 @@
 
 .ticket-body {
   padding: 2rem;
+  
+}
+.details-item{
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  color: var(--gray-300);
 }
 
 .ticket-section {
@@ -268,3 +275,5 @@
 .qr-loading p {
   margin: 0;
 }
+
+

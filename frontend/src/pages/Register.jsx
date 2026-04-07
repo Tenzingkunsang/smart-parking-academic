@@ -173,7 +173,7 @@ const Register = () => {
 
           {testCode ? (
             <div className="dev-code-hint" role="status">
-              Dev preview code: <strong>{testCode}</strong>
+             code:  <strong>{testCode}</strong>
             </div>
           ) : null}
 
@@ -233,7 +233,7 @@ const Register = () => {
                 onChange={handleChange}
                 required
                 autoComplete="name"
-                placeholder="Your name"
+                placeholder="Full name "
               />
             </div>
 
@@ -247,7 +247,7 @@ const Register = () => {
                 onChange={handleChange}
                 required
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder="@gmail.com"
               />
             </div>
 
@@ -267,7 +267,7 @@ const Register = () => {
             </div>
 
             <div className="form-group">
-              <label htmlFor="reg-phone">Phone (optional)</label>
+              <label htmlFor="reg-phone">Phone</label>
               <input
                 id="reg-phone"
                 type="tel"
@@ -280,7 +280,7 @@ const Register = () => {
             </div>
 
             <div className="form-group">
-              <label htmlFor="reg-vehicle">Vehicle number (optional)</label>
+              <label htmlFor="reg-vehicle">Vehicle number</label>
               <input
                 id="reg-vehicle"
                 type="text"

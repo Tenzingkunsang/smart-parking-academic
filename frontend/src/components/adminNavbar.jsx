@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { API_BASE, getAuthToken } from '../config/api';
 import '../styles/Navbar.css';
 
 const Navbar = () => {
@@ -14,10 +15,8 @@ const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const token = useMemo(() => localStorage.getItem('token'), [isLoggedIn]);
-
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     const userData = localStorage.getItem('user');
     
     setIsLoggedIn(!!token);
@@ -36,9 +35,11 @@ const Navbar = () => {
     }
 
     const fetchUnreadCount = async () => {
+      const t = getAuthToken();
+      if (!t) return;
       try {
-        const res = await fetch('http://localhost:5001/api/notifications/unread/count', {
-          headers: { Authorization: `Bearer ${token}` }
+        const res = await fetch(`${API_BASE}/notifications/unread/count`, {
+          headers: { Authorization: `Bearer ${t}` }
         });
         const data = await res.json();
         if (!data.success) return;
@@ -49,7 +50,7 @@ const Navbar = () => {
     };
 
     fetchUnreadCount();
-  }, [isLoggedIn, token]);
+  }, [isLoggedIn, location.pathname]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -62,11 +63,13 @@ const Navbar = () => {
   }, [dropdownOpen]);
 
   const fetchPreview = async () => {
+    const t = getAuthToken();
+    if (!t) return;
     setPreviewLoading(true);
     try {
       const res = await fetch(
-        'http://localhost:5001/api/notifications?limit=50&skip=0&unreadOnly=false',
-        { headers: { Authorization: `Bearer ${token}` } }
+        `${API_BASE}/notifications?limit=50&skip=0&unreadOnly=false`,
+        { headers: { Authorization: `Bearer ${t}` } }
       );
       const data = await res.json();
       if (!data.success) return;
@@ -82,18 +85,33 @@ const Navbar = () => {
   const handleOpenNotifications = () => {
     setDropdownOpen((prev) => {
       const next = !prev;
-      if (next) fetchPreview();
+      if (next) {
+        fetchPreview();
+        const t = getAuthToken();
+        if (t) {
+          fetch(`${API_BASE}/notifications/unread/count`, {
+            headers: { Authorization: `Bearer ${t}` },
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.success) setUnreadCount(data.data?.unreadCount || 0);
+            })
+            .catch(() => {});
+        }
+      }
       return next;
     });
   };
 
   const handleMarkAllRead = async () => {
+    const t = getAuthToken();
+    if (!t) return;
     try {
-      await fetch('http://localhost:5001/api/notifications/read/all', {
+      await fetch(`${API_BASE}/notifications/read/all`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${t}`
         }
       });
       setUnreadCount(0);
@@ -104,12 +122,14 @@ const Navbar = () => {
   };
 
   const handleMarkRead = async (id) => {
+    const t = getAuthToken();
+    if (!t) return;
     try {
-      await fetch(`http://localhost:5001/api/notifications/${id}/read`, {
+      await fetch(`${API_BASE}/notifications/${id}/read`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${t}`
         }
       });
       setPreviewNotifications((prev) => prev.map((n) => (n._id === id ? { ...n, read: true } : n)));
@@ -121,6 +141,7 @@ const Navbar = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('authToken');
     localStorage.removeItem('user');
     setIsLoggedIn(false);
     setUser(null);

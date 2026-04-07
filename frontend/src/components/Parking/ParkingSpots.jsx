@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, MapPin } from 'lucide-react';
+import toast from 'react-hot-toast';
 import BookingModal from './BookingModal';
 import ParkingMap from './ParkingMap';
 import SpotAmenities from './SpotAmenities';
+import { io } from 'socket.io-client';
 import { clusterSpotsByGrid, haversineMeters, formatDistance } from '../../utils/geo';
-import { API_BASE } from '../../config/api';
+import { API_BASE, getSocketOrigin } from '../../config/api';
 import './ParkingSpots.css';
 const GEOFENCE_RADIUS_M = 500;
 
@@ -41,10 +43,19 @@ const ParkingSpots = () => {
   useEffect(() => {
     fetchSpots();
     const interval = setInterval(fetchSpots, 4000);
-    return () => clearInterval(interval);
+    const socket = io(getSocketOrigin(), { transports: ['websocket', 'polling'] });
+    const onSpotChange = () => {
+      fetchSpots();
+    };
+    socket.on('parkingSpotStatusChanged', onSpotChange);
+    return () => {
+      clearInterval(interval);
+      socket.off('parkingSpotStatusChanged', onSpotChange);
+      socket.disconnect();
+    };
   }, [fetchSpots]);
 
-  useEffect(() => {
+  const loadLocationSilently = useCallback(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -52,6 +63,28 @@ const ParkingSpots = () => {
       },
       () => {},
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  }, []);
+
+  useEffect(() => {
+    loadLocationSilently();
+  }, [loadLocationSilently]);
+
+  const refreshUserLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported in this browser');
+      return;
+    }
+    toast.loading('Getting your location…', { id: 'geo' });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        toast.success('Location updated — distances are calculated from GPS', { id: 'geo' });
+      },
+      () => {
+        toast.error('Location permission denied or unavailable', { id: 'geo' });
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   }, []);
 
@@ -291,7 +324,19 @@ const ParkingSpots = () => {
             <h1 className="sheet-title">Find parking</h1>
             <p className="sheet-sub">
               {filteredSpots.length} of {spots.length} spots
-              {userPosition ? ' · GPS on' : ' · Enable location for distance'}
+              {userPosition ? ' · GPS on' : ' · Tap below for distance'}
+            </p>
+            <button
+              type="button"
+              className="geo-refresh-btn"
+              onClick={refreshUserLocation}
+              aria-label="Use my location for distance"
+            >
+              <MapPin size={16} aria-hidden />
+              Use my location
+            </button>
+            <p className="sheet-geo-hint">
+
             </p>
           </div>
         </div>

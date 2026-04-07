@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { API_BASE, getAuthToken } from '../../config/api';
 import './Notifications.css';
-
-const API_BASE = 'http://localhost:5001/api';
 
 const Notifications = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -14,9 +14,9 @@ const Notifications = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [now, setNow] = useState(Date.now());
 
-  const token = useMemo(() => localStorage.getItem('token'), []);
-
   const fetchUnreadCount = async () => {
+    const token = getAuthToken();
+    if (!token) return;
     const res = await fetch(`${API_BASE}/notifications/unread/count`, {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -26,6 +26,11 @@ const Notifications = () => {
   };
 
   const fetchNotifications = async () => {
+    const token = getAuthToken();
+    if (!token) {
+      navigate('/login');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -49,6 +54,7 @@ const Notifications = () => {
   };
 
   useEffect(() => {
+    const token = getAuthToken();
     if (!token) {
       navigate('/login');
       return;
@@ -56,7 +62,7 @@ const Notifications = () => {
     fetchUnreadCount().catch(() => {});
     fetchNotifications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  }, [filter, location.key]);
 
   useEffect(() => {
     // Keep countdown timers fresh (only lightweight local state updates).
@@ -65,6 +71,8 @@ const Notifications = () => {
   }, []);
 
   const handleMarkAllRead = async () => {
+    const token = getAuthToken();
+    if (!token) return;
     try {
       await fetch(`${API_BASE}/notifications/read/all`, {
         method: 'PUT',
@@ -82,6 +90,8 @@ const Notifications = () => {
   };
 
   const handleMarkRead = async (id) => {
+    const token = getAuthToken();
+    if (!token) return;
     try {
       await fetch(`${API_BASE}/notifications/${id}/read`, {
         method: 'PUT',
@@ -110,12 +120,15 @@ const Notifications = () => {
   };
 
   const handleArrivalResponse = async (n, responseValue) => {
+    const token = getAuthToken();
+    if (!token) return;
     try {
       setError('');
       const reservationId = n?.meta?.reservationId;
       if (!reservationId) return;
+      const rid = typeof reservationId === 'object' && reservationId !== null ? reservationId.toString() : String(reservationId);
 
-      const res = await fetch(`${API_BASE}/reservations/${reservationId}/arrival-response`, {
+      const res = await fetch(`${API_BASE}/reservations/${rid}/arrival-response`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

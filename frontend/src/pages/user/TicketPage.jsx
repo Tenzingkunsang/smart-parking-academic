@@ -13,12 +13,11 @@ const TicketPage = () => {
     if (spot && bookingId) {
       // Create QR code data with booking information
       const qrData = JSON.stringify({
-        bookingId: bookingId,
+        reservationId: bookingId,
+        bookingId,
         spotNumber: spot.spotNumber,
         location: spot.locationName,
-        address: spot.location.address || 'Kathmandu',
-        checkInTime: new Date().toISOString(),
-        validUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        address: spot.location?.address || spot.address || 'Kathmandu',
         vehicleType: spot.vehicleType,
         price: spot.price,
         duration: duration

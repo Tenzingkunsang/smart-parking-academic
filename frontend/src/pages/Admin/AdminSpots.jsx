@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { API_BASE } from '../../config/api';
 import './AdminSpots.css';
 
 const AdminSpots = () => {
@@ -23,7 +25,7 @@ const AdminSpots = () => {
 
   const fetchSpots = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/parking/spots');
+      const response = await fetch(`${API_BASE}/parking/spots`);
       const data = await response.json();
       if (data.success) {
         setSpots(data.data);
@@ -39,15 +41,25 @@ const AdminSpots = () => {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5001/api/parking/spots', {
+      const lat = parseFloat(formData.lat);
+      const lng = parseFloat(formData.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        toast.error('Enter valid latitude and longitude');
+        return;
+      }
+      const response = await fetch(`${API_BASE}/parking/spots`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          ...formData,
-          location: { lat: parseFloat(formData.lat), lng: parseFloat(formData.lng), address: formData.address }
+          locationName: formData.locationName.trim(),
+          address: formData.address.trim(),
+          price: Number(formData.price) || 50,
+          totalSpaces: Number(formData.totalSpaces) || 10,
+          vehicleType: formData.vehicleType,
+          location: { lat, lng }
         })
       });
       const data = await response.json();
@@ -57,11 +69,13 @@ const AdminSpots = () => {
         setFormData({
           locationName: '', address: '', lat: '', lng: '', price: 50, totalSpaces: 10, vehicleType: 'car'
         });
-        alert('Parking spot created successfully');
+        toast.success('Parking spot created successfully');
+      } else {
+        toast.error(data.message || 'Failed to create parking spot');
       }
     } catch (error) {
       console.error('Error creating spot:', error);
-      alert('Failed to create parking spot');
+      toast.error('Failed to create parking spot');
     }
   };
 
@@ -69,7 +83,7 @@ const AdminSpots = () => {
     if (!window.confirm('Delete this parking spot?')) return;
     try {
       const token = localStorage.getItem('token');
-      await fetch(`http://localhost:5001/api/parking/spots/${id}`, {
+      await fetch(`${API_BASE}/parking/spots/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
