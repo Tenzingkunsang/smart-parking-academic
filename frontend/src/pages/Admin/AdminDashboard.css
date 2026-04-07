@@ -1,0 +1,112 @@
+.admin-container {
+  min-height: 100vh;
+  background: var(--gray-950);
+  padding: 2rem;
+}
+
+.admin-header {
+  margin-bottom: 2rem;
+}
+
+.admin-header h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  color: white;
+  margin-bottom: 0.5rem;
+}
+
+.admin-header p {
+  color: var(--gray-400);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background: var(--gray-900);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid var(--gray-800);
+  transition: all 0.3s;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary-green);
+}
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--gray-800);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--primary-green);
+}
+
+.stat-info h3 {
+  color: var(--gray-400);
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+.stat-number {
+  color: white;
+  font-size: 1.75rem;
+  font-weight: bold;
+}
+
+.stat-card.available .stat-icon { color: #22c55e; }
+.stat-card.admins .stat-icon { color: #eab308; }
+.stat-card.reservations .stat-icon { color: #3b82f6; }
+
+.admin-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  padding: 0.75rem 1.5rem;
+  background: var(--gray-800);
+  border: 1px solid var(--gray-700);
+  border-radius: 0.5rem;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.action-btn:hover {
+  background: var(--gray-700);
+  transform: translateY(-1px);
+}
+
+.scanner-btn {
+  background: var(--primary-green);
+  color: var(--primary-black);
+  border: none;
+}
+
+.scanner-btn:hover {
+  background: var(--primary-green-dark);
+}
+
+.admin-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  color: var(--gray-400);
+}
