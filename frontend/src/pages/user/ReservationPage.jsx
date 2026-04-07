@@ -63,7 +63,6 @@ const ReservationPage = () => {
     setTimeout(() => {
       setLoading(false);
       setStep('confirm');
-      // Navigate to ticket page after 2 seconds
       setTimeout(() => {
         navigate(`/ticket/${booking?.reservation._id}`, {
           state: { reservation: booking?.reservation, spot }

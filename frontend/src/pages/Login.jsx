@@ -170,7 +170,7 @@ const Login = () => {
 
           {testCode ? (
             <div className="dev-code-hint" role="status">
-              Dev preview code: <strong>{testCode}</strong>
+              test code: <strong>{testCode}</strong>
             </div>
           ) : null}
 
@@ -229,7 +229,7 @@ const Login = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder="@gmail.com"
               />
             </div>
 
