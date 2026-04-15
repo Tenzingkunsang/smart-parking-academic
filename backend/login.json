@@ -1,0 +1,1 @@
+{"success":true,"message":"Login successful","token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5YmY4OGM2OGI3YzE2ODY1ODFmNTY1MSIsImlhdCI6MTc3NDg2ODAyNSwiZXhwIjoxNzc3NDYwMDI1fQ.w-BqLnHcepE-Hb85NsGT62ERwvohRJDyoO5AfjzosmY","user":{"id":"69bf88c68b7c1686581f5651","name":"Test User","email":"test@example.com","phone":"9800000000","vehicleNumber":"BA12345","userType":"user"}}

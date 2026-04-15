@@ -16,30 +16,10 @@
   --accent-blue: #818cf8;
   --gray-light: #f1f5f9;
   --gray-medium: #94a3b8;
-  --gray-dark: #64748b;
-  --surface-glass: rgba(15, 23, 42, 0.72);
-  --surface-border: rgba(255, 255, 255, 0.1);
-  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.28);
-  --shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.35);
-  --border-radius: 16px;
-  --transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* Compatibility tokens for admin pages */
-  --primary-green-dark: var(--dark-green);
-  --primary-green-light: var(--light-green);
-
-  /* Gray scale (Tailwind-like) used across admin CSS */
-  --gray-50: #f3f8ff;
-  --gray-100: #e6eefc;
-  --gray-200: rgba(255, 255, 255, 0.14);
-  --gray-300: rgba(147, 169, 194, 0.95);
-  --gray-400: rgba(147, 169, 194, 0.85);
-  --gray-500: rgba(91, 107, 133, 0.95);
-  --gray-600: rgba(75, 85, 99, 0.95);
-  --gray-700: rgba(55, 65, 81, 0.95);
-  --gray-800: #1e293b;
-  --gray-900: #0f172a;
-  --gray-950: #0b1324;
+  --gray-dark: #475569;
+  --border-radius: 8px;
+  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  -o-border-image: auto;
 }
 
 * {
