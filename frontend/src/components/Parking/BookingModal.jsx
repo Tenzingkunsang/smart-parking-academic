@@ -1,19 +1,42 @@
+/**
+ * BookingModal.jsx  –  REWRITTEN
+ *
+ * Fix applied:
+ *  [1] User now picks:  DATE  +  TIME  +  DURATION
+ *      scheduledArrival is sent to the backend so the reallocation service
+ *      and the "are you coming?" notification are anchored to a real future time.
+ *
+ * Previous version only had a duration selector — no arrival time picker.
+ */
+
 import React, { useState, useEffect } from 'react';
-import { MapPin } from 'lucide-react';
+import { MapPin, Clock, Calendar } from 'lucide-react';
 import './BookingModal.css';
 
 const PLATE_KEY = 'vehiclePlate';
 
+/** Returns the minimum datetime-local value (now + 5 min, rounded up to nearest minute). */
+function minArrivalValue() {
+  const d = new Date(Date.now() + 5 * 60 * 1000);
+  d.setSeconds(0, 0);
+  // datetime-local format: YYYY-MM-DDTHH:MM
+  return d.toISOString().slice(0, 16);
+}
+
 const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
-  const [step, setStep] = useState(1);
-  const [duration, setDuration] = useState(60);
-  const [loading, setLoading] = useState(false);
-  const [vehiclePlate, setVehiclePlate] = useState(() => localStorage.getItem(PLATE_KEY) || '');
+  const [step,          setStep]         = useState(1);
+  const [duration,      setDuration]     = useState(60);
+  const [arrivalValue,  setArrivalValue] = useState('');   // FIX [1]: datetime-local string
+  const [loading,       setLoading]      = useState(false);
+  const [vehiclePlate,  setVehiclePlate] = useState(() => localStorage.getItem(PLATE_KEY) || '');
+  const [arrivalError,  setArrivalError] = useState('');
 
   useEffect(() => {
     if (isOpen) {
       setStep(1);
       setVehiclePlate(localStorage.getItem(PLATE_KEY) || '');
+      setArrivalValue(minArrivalValue());
+      setArrivalError('');
     }
   }, [isOpen]);
 
@@ -26,17 +49,40 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
     return hours * spot.price;
   };
 
+  // FIX [1]: validate arrival is in the future before moving to step 2
+  const handleReviewClick = () => {
+    if (!arrivalValue) {
+      setArrivalError('Please select an arrival date and time.');
+      return;
+    }
+    const arrival = new Date(arrivalValue);
+    if (arrival <= new Date()) {
+      setArrivalError('Arrival time must be in the future.');
+      return;
+    }
+    setArrivalError('');
+    setStep(2);
+  };
+
   const handleFinalConfirm = async () => {
     setLoading(true);
     try {
-      await onConfirm(spot._id, duration);
+      const scheduledArrival = new Date(arrivalValue).toISOString();
+      // FIX [1]: pass scheduledArrival alongside duration
+      await onConfirm(spot._id, duration, scheduledArrival);
     } finally {
       setLoading(false);
     }
   };
 
-  const hoursLabel = Math.ceil(duration / 60);
-  const total = calculateTotal();
+  const hoursLabel       = Math.ceil(duration / 60);
+  const total            = calculateTotal();
+  const arrivalFormatted = arrivalValue
+    ? new Date(arrivalValue).toLocaleString(undefined, {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+    : '—';
 
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
@@ -56,9 +102,11 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
           </button>
         </div>
 
+        {/* ── Step 1: Pick arrival + duration ──────────────────────────────── */}
         {step === 1 ? (
           <>
             <div className="modal-body">
+              {/* Spot info */}
               <div className="spot-info">
                 <h3>{spot.locationName}</h3>
                 <p className="spot-address">
@@ -68,6 +116,7 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
                 <p className="spot-number">Spot #{spot.spotNumber}</p>
               </div>
 
+              {/* Vehicle plate */}
               <div className="duration-selector">
                 <label htmlFor="vehicle-plate">Vehicle plate (optional)</label>
                 <input
@@ -80,13 +129,36 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
                     const v = e.target.value;
                     setVehiclePlate(v);
                     if (v.trim()) localStorage.setItem(PLATE_KEY, v.trim());
-                    else localStorage.removeItem(PLATE_KEY);
+                    else          localStorage.removeItem(PLATE_KEY);
                   }}
                 />
               </div>
 
+              {/* FIX [1]: Arrival date & time picker */}
               <div className="duration-selector">
-                <label htmlFor="booking-duration">Duration</label>
+                <label htmlFor="arrival-datetime">
+                  <Calendar size={14} aria-hidden /> Arrival date &amp; time
+                </label>
+                <input
+                  id="arrival-datetime"
+                  type="datetime-local"
+                  min={minArrivalValue()}
+                  value={arrivalValue}
+                  onChange={(e) => {
+                    setArrivalValue(e.target.value);
+                    setArrivalError('');
+                  }}
+                />
+                {arrivalError && (
+                  <p className="field-error" role="alert">{arrivalError}</p>
+                )}
+              </div>
+
+              {/* Duration picker */}
+              <div className="duration-selector">
+                <label htmlFor="booking-duration">
+                  <Clock size={14} aria-hidden /> Duration
+                </label>
                 <select
                   id="booking-duration"
                   value={duration}
@@ -100,6 +172,7 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
                 </select>
               </div>
 
+              {/* Price breakdown */}
               <div className="price-breakdown">
                 <div className="price-row">
                   <span>Hourly rate</span>
@@ -107,9 +180,7 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
                 </div>
                 <div className="price-row">
                   <span>Billed duration</span>
-                  <span>
-                    {hoursLabel} hour{hoursLabel !== 1 ? 's' : ''}
-                  </span>
+                  <span>{hoursLabel} hour{hoursLabel !== 1 ? 's' : ''}</span>
                 </div>
                 <div className="price-row total">
                   <span>Estimated total</span>
@@ -122,12 +193,14 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
               <button type="button" onClick={onClose} className="btn-secondary">
                 Cancel
               </button>
-              <button type="button" onClick={() => setStep(2)} className="btn-primary">
+              <button type="button" onClick={handleReviewClick} className="btn-primary">
                 Review &amp; confirm
               </button>
             </div>
           </>
+
         ) : (
+          /* ── Step 2: Review + confirm ──────────────────────────────────── */
           <>
             <div className="modal-body">
               <p className="confirm-lead">Please confirm your booking details before payment.</p>
@@ -140,24 +213,39 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
                   <span>Spot</span>
                   <strong>#{spot.spotNumber}</strong>
                 </div>
+                {/* FIX [1]: show scheduledArrival in summary */}
+                <div className="confirm-row">
+                  <span>Arrival</span>
+                  <strong>{arrivalFormatted}</strong>
+                </div>
                 <div className="confirm-row">
                   <span>Duration</span>
-                  <strong>
-                    {duration} min ({hoursLabel} hr billed)
-                  </strong>
+                  <strong>{duration} min ({hoursLabel} hr billed)</strong>
                 </div>
                 <div className="confirm-row highlight">
                   <span>Total due</span>
                   <strong className="confirm-total">NPR {total}</strong>
                 </div>
               </div>
-              <p className="confirm-hint">You can choose a payment method on the next screen.</p>
+              <p className="confirm-hint">
+                A reminder will be sent 30 min before your arrival time. Overstaying beyond a 15-minute grace period incurs additional charges.
+              </p>
             </div>
             <div className="modal-footer">
-              <button type="button" onClick={() => setStep(1)} className="btn-secondary" disabled={loading}>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="btn-secondary"
+                disabled={loading}
+              >
                 Back
               </button>
-              <button type="button" onClick={handleFinalConfirm} disabled={loading} className="btn-primary">
+              <button
+                type="button"
+                onClick={handleFinalConfirm}
+                disabled={loading}
+                className="btn-primary"
+              >
                 {loading ? 'Processing…' : 'Confirm booking'}
               </button>
             </div>

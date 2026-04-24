@@ -1,166 +1,230 @@
+/**
+ * reservationRoutes.js  –  REWRITTEN
+ *
+ * Fixes applied:
+ *  [1] Booking requires scheduledArrival (date+time picked by user)
+ *  [2] totalAmount set at booking; finalAmount calculated at checkout (base + overstay)
+ *  [3] overstayMinutes / overstayCharge / overstayDebt fields populated on checkout
+ *  [4] User blocked from new bookings while overstayDebt > 0
+ *  [5] QRScannerPage fields (bookedDuration, actualDuration, overtime, overtimeCharge,
+ *      finalAmount) are all returned by the checkout response
+ *  [6] Admin stats now sums finalAmount (not totalAmount)
+ *  [7] Arrival notification references scheduledArrival, not reservationTime
+ */
+
 const express = require('express');
 const router = express.Router();
-const Reservation = require('../models/Reservation');
-const ParkingSpot = require('../models/ParkingSpot');
-const User = require('../models/User');
-const Notification = require('../models/Notification');
 const QRCode = require('qrcode');
-const { protect } = require('../middleware/auth');
-const socketService = require('../services/socketService');
-const notificationService = require('../services/notificationService');
-const reservationController = require('../controllers/reservationController');
 
-// Create PENDING reservation (does NOT reserve spot)
-router.post('/create-pending', protect, async (req, res) => {
+const Reservation   = require('../models/Reservation');
+const ParkingSpot   = require('../models/ParkingSpot');
+const User          = require('../models/User');
+const Notification  = require('../models/Notification');
+const notificationService = require('../services/notificationService');
+const socketService       = require('../services/socketService');
+const reservationController = require('../controllers/reservationController');
+const { protect } = require('../middleware/auth');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /reservations/create
+// Creates a PENDING reservation (no spot held yet). Requires scheduledArrival.
+// FIX [1]: user now picks date + time + duration in the frontend BookingModal.
+// FIX [4]: blocks booking if user has unpaid overstay debt.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/create', protect, async (req, res) => {
   try {
-    const { parkingSpotId, duration, quantity = 1 } = req.body;
-    
+    const { parkingSpotId, duration, quantity = 1, scheduledArrival } = req.body;
+
+    // FIX [1]: scheduledArrival is required
+    if (!scheduledArrival) {
+      return res.status(400).json({
+        success: false,
+        message: 'scheduledArrival (ISO date string) is required',
+      });
+    }
+    const arrivalDate = new Date(scheduledArrival);
+    if (isNaN(arrivalDate.getTime()) || arrivalDate <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'scheduledArrival must be a valid future date/time',
+      });
+    }
+
+    // FIX [4]: block booking if user owes overstay debt
+    const user = await User.findById(req.user.id);
+    if (user.overstayDebt && user.overstayDebt > 0) {
+      return res.status(403).json({
+        success: false,
+        message: `You have an unpaid overstay debt of NPR ${user.overstayDebt}. Please clear it before making a new booking.`,
+        overstayDebt: user.overstayDebt,
+      });
+    }
+
     const parkingSpot = await ParkingSpot.findById(parkingSpotId);
     if (!parkingSpot) {
       return res.status(404).json({ success: false, message: 'Parking spot not found' });
     }
-    
     if (parkingSpot.availableSpaces < quantity) {
-      return res.status(400).json({ success: false, message: `Only ${parkingSpot.availableSpaces} spaces available` });
+      return res.status(400).json({
+        success: false,
+        message: `Only ${parkingSpot.availableSpaces} spaces available`,
+      });
     }
-    
+
     const hours = Math.ceil(duration / 60);
+    // FIX [2]: totalAmount is the pre-paid base amount; finalAmount set at checkout
     const totalAmount = hours * parkingSpot.price * quantity;
-    
+
     const reservation = new Reservation({
-      user: req.user.id,
-      parkingSpot: parkingSpotId,
-      duration,
+      user:             req.user.id,
+      parkingSpot:      parkingSpotId,
+      duration,         // booked minutes
       quantity,
-      totalAmount,
-      status: 'pending'
+      scheduledArrival: arrivalDate,   // FIX [1]
+      totalAmount,                     // FIX [2]: pre-paid base
+      finalAmount:      totalAmount,   // FIX [6]: will be updated at checkout
+      status:           'pending',
     });
-    
     await reservation.save();
-    
+
     res.json({
       success: true,
       data: {
         reservationId: reservation._id,
         totalAmount,
-        duration
-      }
+        duration,
+        scheduledArrival: arrivalDate,
+      },
     });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Create reservation error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Confirm reservation (NOW reserve the spot)
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /reservations/confirm/:reservationId
+// Called after Khalti payment verification (or cash). Marks spot as reserved.
+// FIX [7]: arrival notification uses scheduledArrival, not reservationTime.
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/confirm/:reservationId', protect, async (req, res) => {
   try {
     const { reservationId } = req.params;
     const { paymentMethod } = req.body;
 
-    // Khalti reservations must be confirmed only after server-side verification.
     if (paymentMethod === 'khalti') {
       return res.status(400).json({
         success: false,
         message: 'Use Khalti verify endpoint to confirm this reservation',
       });
     }
-    
+
     const reservation = await Reservation.findById(reservationId).populate('parkingSpot');
     if (!reservation) {
       return res.status(404).json({ success: false, message: 'Reservation not found' });
     }
-    
     if (reservation.status !== 'pending') {
       return res.status(400).json({ success: false, message: 'Reservation already processed' });
     }
-    
+
     const parkingSpot = reservation.parkingSpot;
-    const quantity = reservation.quantity || 1;
-    
-    // Reserve the spot
+    const quantity    = reservation.quantity || 1;
+
+    // Hold the parking spaces
     parkingSpot.availableSpaces -= quantity;
-    parkingSpot.reservedSpaces += quantity;
+    parkingSpot.reservedSpaces  += quantity;
     parkingSpot.isReserved = true;
-    parkingSpot.status = 'reserved';
+    parkingSpot.status     = 'reserved';
     await parkingSpot.save();
-    
+
     // Update reservation
-    reservation.status = 'reserved';
+    reservation.status        = 'reserved';
     reservation.paymentStatus = 'completed';
     reservation.paymentMethod = paymentMethod;
 
-    // Start (or reset) the dynamic reallocation timer:
-    // user gets a grace window to confirm they're coming before we reallocate.
+    // FIX [7]: grace window anchored to scheduledArrival, not now
     const graceMs = 15 * 60 * 1000;
-    reservation.arrivalConfirmedUntil = new Date(reservation.reservationTime.getTime() + graceMs);
-    
+    reservation.arrivalConfirmedUntil = new Date(
+      reservation.scheduledArrival.getTime() + graceMs
+    );
+
     // Generate QR code
     const qrData = JSON.stringify({
       reservationId: reservation._id.toString(),
-      bookingId: reservation._id.toString(),
-      spotNumber: parkingSpot.spotNumber,
-      location: parkingSpot.locationName
+      bookingId:     reservation._id.toString(),
+      spotNumber:    parkingSpot.spotNumber,
+      location:      parkingSpot.locationName,
     });
     reservation.qrCodeData = await QRCode.toDataURL(qrData);
     await reservation.save();
-    
-    // Update user bookings count
+
     await User.findByIdAndUpdate(req.user.id, { $inc: { totalBookings: 1 } });
-    
-    // Emit socket event for real-time update
+
+    // Real-time socket update
     const io = socketService.getIo();
     if (io) {
       io.emit('parkingSpotStatusChanged', {
-        spotId: parkingSpot._id,
-        status: 'reserved',
+        spotId:          parkingSpot._id,
+        status:          'reserved',
         availableSpaces: parkingSpot.availableSpaces,
-        reservedSpaces: parkingSpot.reservedSpaces
+        reservedSpaces:  parkingSpot.reservedSpaces,
       });
-      console.log('📡 Socket emitted: spot reserved');
     }
 
-    // Notify user (in-app + optional email) that their booking is confirmed
+    // Confirmation notification
     await notificationService.sendNotification(
       req.user.id,
       'Reservation confirmed',
-      `Your parking spot (Spot #${parkingSpot.spotNumber}) is ready. Scan the QR code when you arrive.`,
+      `Your parking spot (Spot #${parkingSpot.spotNumber}) is confirmed for ${reservation.scheduledArrival.toLocaleString()}. Scan the QR code on arrival.`,
       'reservation_confirmed',
       {
-        spotNumber: parkingSpot.spotNumber,
-        duration: reservation.duration,
-        amount: reservation.totalAmount,
-        paymentMethod
+        spotNumber:       parkingSpot.spotNumber,
+        duration:         reservation.duration,
+        amount:           reservation.totalAmount,
+        scheduledArrival: reservation.scheduledArrival.toISOString(),
+        paymentMethod,
       }
     );
 
-    // Ask the user to confirm arrival (for dynamic reallocation).
-    // If they don't respond in time, the scheduler will reallocate the spot.
-    await notificationService.sendNotification(
-      req.user.id,
-      'Confirm you’re coming',
-      'We saved your spot. Please confirm if you are coming so we can keep your reservation. If you don\'t respond, the spot may be reallocated to another user.',
-      'arrival_confirmation',
-      {
-        reservationId: reservation._id,
-        expiresAt: reservation.arrivalConfirmedUntil.toISOString()
-      }
-    );
-    
+    // Schedule "are you coming?" notification 30 min before scheduledArrival
+    // FIX [7]: uses scheduledArrival
+    const msUntilReminder = reservation.scheduledArrival.getTime() - Date.now() - 30 * 60 * 1000;
+    if (msUntilReminder > 0) {
+      setTimeout(async () => {
+        // Only send if still reserved (not yet checked in / cancelled)
+        const fresh = await Reservation.findById(reservation._id);
+        if (fresh && fresh.status === 'reserved') {
+          await notificationService.sendNotification(
+            req.user.id,
+            'Are you coming?',
+            `Your parking spot (#${parkingSpot.spotNumber}) is reserved for ${reservation.scheduledArrival.toLocaleTimeString()}. Confirm you're on your way so we keep your spot.`,
+            'arrival_confirmation',
+            {
+              reservationId: reservation._id,
+              expiresAt:     reservation.arrivalConfirmedUntil.toISOString(),
+            }
+          );
+        }
+      }, msUntilReminder);
+    }
+
     res.json({ success: true, data: reservation });
   } catch (error) {
-    console.error('Error confirming:', error);
+    console.error('Confirm error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Confirm "I'm coming" (extends timer) or "Not coming" (reallocate immediately)
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /reservations/:reservationId/arrival-response
+// User replies "coming" or "not_coming" to the pre-arrival notification.
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/:reservationId/arrival-response', protect, async (req, res) => {
   try {
     const { reservationId } = req.params;
     const { response } = req.body; // 'coming' | 'not_coming'
 
-    if (!response || !['coming', 'not_coming'].includes(response)) {
+    if (!['coming', 'not_coming'].includes(response)) {
       return res.status(400).json({ success: false, message: 'Invalid response value' });
     }
 
@@ -168,11 +232,9 @@ router.post('/:reservationId/arrival-response', protect, async (req, res) => {
     if (!reservation) {
       return res.status(404).json({ success: false, message: 'Reservation not found' });
     }
-
     if (reservation.user.toString() !== req.user.id && req.user.userType !== 'admin') {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
-
     if (reservation.status !== 'reserved' || reservation.checkInTime) {
       return res.status(400).json({ success: false, message: 'Reservation is not active' });
     }
@@ -180,71 +242,54 @@ router.post('/:reservationId/arrival-response', protect, async (req, res) => {
     const graceMs = 15 * 60 * 1000;
 
     if (response === 'coming') {
+      // Extend the grace window from now
       reservation.arrivalConfirmedUntil = new Date(Date.now() + graceMs);
       await reservation.save();
 
-      // Mark previous arrival confirmations for this reservation as read
       await Notification.updateMany(
         { user: req.user.id, type: 'arrival_confirmation', 'meta.reservationId': reservation._id, read: false },
         { $set: { read: true, readAt: new Date() } }
       );
-
-      // Create a fresh timer notification (so the UI countdown resets)
       await notificationService.sendNotification(
         req.user.id,
         'Arrival confirmed',
-        'Thanks! Your arrival timer has been extended. Please check in using your QR code before the new deadline.',
+        'Thanks! Your spot is held. Check in with your QR code when you arrive.',
         'arrival_confirmation',
-        {
-          reservationId: reservation._id,
-          expiresAt: reservation.arrivalConfirmedUntil.toISOString()
-        },
+        { reservationId: reservation._id, expiresAt: reservation.arrivalConfirmedUntil.toISOString() },
         { sendEmail: false }
       );
-
       return res.json({ success: true, data: { arrivalConfirmedUntil: reservation.arrivalConfirmedUntil } });
     }
 
-    // response === 'not_coming'
+    // not_coming → release spot immediately
     reservation.status = 'no-show';
-    const quantity = reservation.quantity || 1;
-
+    const quantity    = reservation.quantity || 1;
     const parkingSpot = reservation.parkingSpot;
     if (parkingSpot) {
       await parkingSpot.releaseSpace(quantity);
-      if (parkingSpot.reservedSpaces <= 0) {
-        await parkingSpot.updateStatus('available');
-      } else {
-        await parkingSpot.updateStatus('reserved');
-      }
-
-      // Real-time update
+      await parkingSpot.updateStatus(parkingSpot.reservedSpaces <= 0 ? 'available' : 'reserved');
       const io = socketService.getIo();
       if (io) {
         io.emit('parkingSpotStatusChanged', {
-          spotId: parkingSpot._id,
-          status: parkingSpot.status,
+          spotId:          parkingSpot._id,
+          status:          parkingSpot.status,
           availableSpaces: parkingSpot.availableSpaces,
-          reservedSpaces: parkingSpot.reservedSpaces
+          reservedSpaces:  parkingSpot.reservedSpaces,
         });
       }
     }
-
-    // Mark previous arrival confirmations as read
     await Notification.updateMany(
       { user: req.user.id, type: 'arrival_confirmation', 'meta.reservationId': reservation._id, read: false },
       { $set: { read: true, readAt: new Date() } }
     );
-
     await notificationService.sendNotification(
       req.user.id,
-      'Spot reallocated',
-      'You told us you are not coming. Your parking spot has been released for other users.',
+      'Spot released',
+      'You told us you are not coming. Your parking spot has been released.',
       'arrival_timeout',
       { reservationId: reservation._id, action: 'not_coming' },
       { sendEmail: false }
     );
-
     await reservation.save();
     return res.json({ success: true });
   } catch (error) {
@@ -253,7 +298,9 @@ router.post('/:reservationId/arrival-response', protect, async (req, res) => {
   }
 });
 
-// Cancel pending reservation
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /reservations/pending/:reservationId  – cancel before payment
+// ─────────────────────────────────────────────────────────────────────────────
 router.delete('/pending/:reservationId', protect, async (req, res) => {
   try {
     await Reservation.findByIdAndDelete(req.params.reservationId);
@@ -263,35 +310,32 @@ router.delete('/pending/:reservationId', protect, async (req, res) => {
   }
 });
 
-// QR/admin check-in endpoint
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /reservations/checkin   – admin QR scan on ENTRY
+// FIX [1]: checkInTime = NOW (timer starts here, not at booking)
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/checkin', protect, reservationController.checkIn);
 
-// User checkout by reservation id
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /reservations/:id/checkout   – user-initiated checkout by reservation id
+// POST /reservations/checkout       – admin QR scan on EXIT
+// FIX [1][2][3][5][6]: overstay logic, debt, correct field names
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/checkout', protect, reservationController.checkOut);
 
-// QR/admin checkout endpoint accepts { qrData }
 router.post('/checkout', protect, async (req, res, next) => {
   try {
     const { qrData } = req.body || {};
     let parsedData;
-
     try {
       parsedData = JSON.parse(qrData || '');
-    } catch (e) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid QR code format',
-      });
+    } catch {
+      return res.status(400).json({ success: false, message: 'Invalid QR code format' });
     }
-
     const rid = parsedData.reservationId || parsedData.bookingId;
     if (!rid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Reservation id not found in QR data',
-      });
+      return res.status(400).json({ success: false, message: 'Reservation id not found in QR data' });
     }
-
     req.params.id = rid;
     return reservationController.checkOut(req, res, next);
   } catch (error) {
@@ -299,39 +343,42 @@ router.post('/checkout', protect, async (req, res, next) => {
   }
 });
 
-// Active parking session (checked-in) for home screen timer + quick actions
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /reservations/session  – active checked-in session for home screen timer
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/session', protect, async (req, res) => {
   try {
     const reservation = await Reservation.findOne({
-      user: req.user.id,
+      user:   req.user.id,
       status: 'checked-in',
-    })
-      .populate('parkingSpot')
-      .sort({ checkInTime: -1 });
+    }).populate('parkingSpot').sort({ checkInTime: -1 });
 
     if (!reservation || !reservation.checkInTime) {
       return res.json({ success: true, data: null });
     }
 
-    const endsAt = new Date(reservation.checkInTime.getTime() + reservation.duration * 60 * 1000);
+    // Session end = checkInTime + bookedDuration
+    const sessionEndsAt = new Date(
+      reservation.checkInTime.getTime() + reservation.duration * 60 * 1000
+    );
+
     return res.json({
       success: true,
-      data: {
-        reservation,
-        sessionEndsAt: endsAt.toISOString(),
-      },
+      data: { reservation, sessionEndsAt: sessionEndsAt.toISOString() },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Get user's reservations
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /reservations/my  – user's own reservation history
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/my', protect, async (req, res) => {
   try {
-    const reservations = await Reservation.find({ 
-      user: req.user.id,
-      status: { $in: ['reserved', 'checked-in', 'completed'] }
+    const reservations = await Reservation.find({
+      user:   req.user.id,
+      status: { $in: ['reserved', 'checked-in', 'completed'] },
     }).populate('parkingSpot').sort('-createdAt');
     res.json({ success: true, data: reservations });
   } catch (error) {
@@ -339,44 +386,68 @@ router.get('/my', protect, async (req, res) => {
   }
 });
 
-// Cancel confirmed reservation
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /reservations/:id/cancel  – cancel a confirmed reservation
+// ─────────────────────────────────────────────────────────────────────────────
 router.put('/:id/cancel', protect, async (req, res) => {
   try {
     const reservation = await Reservation.findById(req.params.id).populate('parkingSpot');
     if (!reservation) return res.status(404).json({ success: false });
-    
     if (reservation.status !== 'reserved') {
-      return res.status(400).json({ success: false, message: 'Cannot cancel' });
+      return res.status(400).json({ success: false, message: 'Cannot cancel this reservation' });
     }
-    
+
     const parkingSpot = reservation.parkingSpot;
-    const quantity = reservation.quantity || 1;
-    
-    // Release the spot
+    const quantity    = reservation.quantity || 1;
+
     parkingSpot.availableSpaces += quantity;
-    parkingSpot.reservedSpaces -= quantity;
-    if (parkingSpot.reservedSpaces === 0) {
+    parkingSpot.reservedSpaces  -= quantity;
+    if (parkingSpot.reservedSpaces <= 0) {
       parkingSpot.isReserved = false;
-      parkingSpot.status = 'available';
+      parkingSpot.status     = 'available';
     }
     await parkingSpot.save();
-    
+
     reservation.status = 'cancelled';
     await reservation.save();
-    
-    // Emit socket event
+
     const io = socketService.getIo();
     if (io) {
       io.emit('parkingSpotStatusChanged', {
-        spotId: parkingSpot._id,
-        status: 'available',
+        spotId:          parkingSpot._id,
+        status:          parkingSpot.status,
         availableSpaces: parkingSpot.availableSpaces,
-        reservedSpaces: parkingSpot.reservedSpaces
+        reservedSpaces:  parkingSpot.reservedSpaces,
       });
-      console.log('📡 Socket emitted: spot available');
     }
-    
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /reservations/:id/pay-overstay  – user pays their overstay debt
+// FIX [4]: clears overstayDebt so user can book again
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/pay-overstay', protect, async (req, res) => {
+  try {
+    const reservation = await Reservation.findById(req.params.id);
+    if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
+    if (reservation.user.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    if (!reservation.overstayCharge || reservation.overstayCharge <= 0) {
+      return res.status(400).json({ success: false, message: 'No overstay charge on this reservation' });
+    }
+
+    // Mark overstay as paid and clear the user's debt
+    reservation.overstayPaid = true;
+    await reservation.save();
+
+    await User.findByIdAndUpdate(req.user.id, { $set: { overstayDebt: 0 } });
+
+    res.json({ success: true, message: 'Overstay charge settled. You may now make new bookings.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
