@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, MapPin, X, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { io } from 'socket.io-client';
+import parkingService from '../../services/parkingService';
 import BookingModal from './BookingModal';
 import ParkingMap from './ParkingMap';
 import SpotAmenities from './SpotAmenities';
@@ -32,6 +33,9 @@ const ParkingSpots = () => {
   const [socketConnected, setSocketConnected] = useState(false);
   const [lotGridSpot, setLotGridSpot] = useState(null); // for visual grid modal
   const [activeBooking, setActiveBooking] = useState(null);
+  const [mapExpanded, setMapExpanded] = useState(false);
+  const [recommendedSpots, setRecommendedSpots] = useState([]);
+  const [featureFilters, setFeatureFilters] = useState([]);
 
   const cardRefs = useRef({});
   const socketRef = useRef(null);
@@ -48,6 +52,15 @@ const ParkingSpots = () => {
       console.error('[ParkingSpots] Fetch error:', err);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const fetchRecommendations = useCallback(async () => {
+    try {
+      const res = await parkingService.getRecommendations();
+      if (res.success) setRecommendedSpots(res.data || []);
+    } catch {
+      setRecommendedSpots([]);
     }
   }, []);
 
@@ -74,6 +87,7 @@ const ParkingSpots = () => {
   // ── Socket setup ───────────────────────────────────────────────────────────
   useEffect(() => {
     fetchSpots();
+    fetchRecommendations();
     fetchActiveBooking();
 
     const token = localStorage.getItem('token');
@@ -119,7 +133,7 @@ const ParkingSpots = () => {
         pollIntervalRef.current = null;
       }
     };
-  }, [fetchSpots, fetchActiveBooking]);
+  }, [fetchSpots, fetchRecommendations, fetchActiveBooking]);
 
   // ── Geolocation ────────────────────────────────────────────────────────────
   const loadLocationSilently = useCallback(() => {
@@ -185,13 +199,22 @@ const ParkingSpots = () => {
       }
       // Price filter
       if (maxP && spot.price > maxP) return false;
+      if (featureFilters.length) {
+        const spotFeatures = spot.features || [];
+        const hasAll = featureFilters.every((f) => spotFeatures.includes(f));
+        if (!hasAll) return false;
+      }
       return true;
     });
-  }, [spotsWithDistance, filter, vehicleFilter, searchQuery, priceMax]);
+  }, [spotsWithDistance, filter, vehicleFilter, searchQuery, priceMax, featureFilters]);
 
   const clusters = useMemo(
     () => clusterSpotsByGrid(filteredSpots, 0.012),
     [filteredSpots]
+  );
+  const totalAvailableSpaces = useMemo(
+    () => spots.reduce((sum, spot) => sum + (spot.availableSpaces || 0), 0),
+    [spots]
   );
 
   const selectedSpot = useMemo(
@@ -274,13 +297,13 @@ const ParkingSpots = () => {
     setGeoConfirm(null);
   };
 
-  const handleConfirmBooking = async (spotId, duration) => {
+  const handleConfirmBooking = async (spotId, duration, scheduledArrival) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/reservations/create-pending`, {
+      const response = await fetch(`${API_BASE}/reservations/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ parkingSpotId: spotId, duration, quantity: 1 }),
+        body: JSON.stringify({ parkingSpotId: spotId, duration, quantity: 1, scheduledArrival }),
       });
       const data = await response.json();
       if (data.success) {
@@ -291,6 +314,7 @@ const ParkingSpots = () => {
             totalAmount: data.data.totalAmount,
             pendingReservationId: data.data.reservationId,
             createdAt: new Date().toISOString(),
+            scheduledArrival,
           },
         });
       } else {
@@ -338,6 +362,15 @@ const ParkingSpots = () => {
       )}
 
       <div className="parking-map-stage">
+        <button
+          type="button"
+          className="geo-refresh-btn"
+          onClick={() => setMapExpanded((prev) => !prev)}
+          aria-label="Toggle map size"
+          style={{ position: 'absolute', top: 10, right: 14, zIndex: 700 }}
+        >
+          {mapExpanded ? 'Collapse map' : 'Expand map'}
+        </button>
         <ParkingMap
           clusters={clusters}
           selectedSpotId={selectedSpotId}
@@ -346,6 +379,7 @@ const ParkingSpots = () => {
           onClusterClick={handleClusterClick}
           onSpotHover={setHoveredSpotId}
           userPosition={userPosition}
+          expanded={mapExpanded}
         />
       </div>
 
@@ -360,12 +394,19 @@ const ParkingSpots = () => {
               <h1 className="sheet-title">Find parking</h1>
               <p className="sheet-sub">
                 {filteredSpots.length} of {spots.length} spots
+                {' · '}
+                {totalAvailableSpaces} spaces open
                 {userPosition ? ' · GPS on' : ''}
                 {' · '}
                 <span className={`live-dot ${socketConnected ? 'live' : 'polling'}`}>
                   {socketConnected ? '● Live' : '○ Polling'}
                 </span>
               </p>
+              {recommendedSpots[0] && (
+                <p className="sheet-sub">
+                  Smart pick: <strong>{recommendedSpots[0].locationName}</strong> (score {recommendedSpots[0].recommendationScore})
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -451,6 +492,29 @@ const ParkingSpots = () => {
                   type="button"
                   className={`filter-chip ${vehicleFilter === opt.value ? 'active' : ''}`}
                   onClick={() => setVehicleFilter(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="filter-row">
+            <span className="filter-heading">Features</span>
+            <div className="filter-chips">
+              {[
+                { value: 'ev_charging', label: 'EV' },
+                { value: 'handicap', label: 'Handicap' },
+                { value: 'covered', label: 'Covered' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`filter-chip ${featureFilters.includes(opt.value) ? 'active' : ''}`}
+                  onClick={() =>
+                    setFeatureFilters((prev) =>
+                      prev.includes(opt.value) ? prev.filter((v) => v !== opt.value) : [...prev, opt.value]
+                    )
+                  }
                 >
                   {opt.label}
                 </button>
@@ -545,6 +609,9 @@ const ParkingSpots = () => {
 
                     <h2 className="sheet-card-name">{spot.locationName}</h2>
                     <p className="sheet-card-address">{addressLine(spot)}</p>
+                    {recommendedSpots.some((r) => r._id === spot._id) && (
+                      <p className="sheet-sub">Predicted high availability for your arrival window</p>
+                    )}
 
                     {/* ── Availability bar ── */}
                     {avInfo && (

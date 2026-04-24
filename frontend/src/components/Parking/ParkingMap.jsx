@@ -50,6 +50,7 @@ const ParkingMap = ({
   userPosition,
   defaultCenter,
   defaultZoom = 13,
+  expanded = false,
 }) => {
   const center = useMemo(() => defaultCenter ?? DEFAULT_MAP_CENTER, [defaultCenter]);
 
@@ -84,7 +85,7 @@ const ParkingMap = ({
   }
 
   return (
-    <div className="parking-map-wrap" aria-label="Parking map">
+    <div className={`parking-map-wrap ${expanded ? 'is-expanded' : ''}`} aria-label="Parking map">
       <MapContainer
         center={center}
         zoom={defaultZoom}

@@ -16,6 +16,7 @@ const TicketPage = () => {
     bookingId,
     paymentStatus,
     createdAt,
+    scheduledArrival,
   } = location.state || {};
 
   const [qrValue, setQrValue] = useState('');
@@ -53,9 +54,9 @@ const TicketPage = () => {
   }
 
   const hours = Math.ceil(duration / 60);
-  const checkInTime = new Date();
-  const checkInDeadline = new Date(checkInTime.getTime() + 15 * 60 * 1000);
-  const isPendingCash = paymentMethod === 'cash' || paymentStatus === 'pending';
+  const reservationStart = scheduledArrival ? new Date(scheduledArrival) : new Date(createdAt || Date.now());
+  const checkInDeadline = new Date(reservationStart.getTime() + 15 * 60 * 1000);
+  const isPendingCash = paymentMethod === 'cash';
 
   const getPaymentMethodLabel = (method) => {
     if (!method) return 'Khalti';
@@ -125,8 +126,8 @@ const TicketPage = () => {
               <span className="value">{hours} hour(s) ({duration} minutes)</span>
             </div>
             <div className="info-row">
-              <span className="label">Check-in Time</span>
-              <span className="value">{checkInTime.toLocaleString()}</span>
+              <span className="label">Scheduled Arrival</span>
+              <span className="value">{reservationStart.toLocaleString()}</span>
             </div>
             <div className="info-row">
               <span className="label">Check-in Deadline</span>
@@ -152,7 +153,7 @@ const TicketPage = () => {
             <div className="info-row">
               <span className="label">Payment Status</span>
               <span className={`value ${isPendingCash ? 'status-pending' : 'status-paid'}`}>
-                {isCancelled ? 'Cancelled' : isPendingCash ? 'Pending (Pay on Arrival)' : 'Completed'}
+                {isCancelled ? 'Cancelled' : isPendingCash ? 'Pending (Pay on Spot)' : (paymentStatus || 'Completed')}
               </span>
             </div>
           </div>

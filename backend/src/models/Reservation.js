@@ -15,6 +15,10 @@ const reservationSchema = new mongoose.Schema({
     type: Date, 
     default: Date.now 
   },
+  scheduledArrival: {
+    type: Date,
+    required: true
+  },
   checkInTime: { 
     type: Date 
   },
@@ -40,6 +44,30 @@ const reservationSchema = new mongoose.Schema({
   totalAmount: {
     type: Number,
     default: 0
+  },
+  finalAmount: {
+    type: Number,
+    default: 0
+  },
+  actualDuration: {
+    type: Number,
+    default: 0
+  },
+  overstayMinutes: {
+    type: Number,
+    default: 0
+  },
+  overstayCharge: {
+    type: Number,
+    default: 0
+  },
+  overstayDebt: {
+    type: Number,
+    default: 0
+  },
+  overstayPaid: {
+    type: Boolean,
+    default: false
   },
   paymentStatus: {
     type: String,
@@ -69,7 +97,8 @@ const reservationSchema = new mongoose.Schema({
 reservationSchema.virtual('isExpired').get(function() {
   if (this.status !== 'reserved') return false;
   const graceMs = 15 * 60 * 1000;
-  const baseUntil = this.arrivalConfirmedUntil || new Date(this.reservationTime.getTime() + graceMs);
+  const anchor = this.scheduledArrival || this.reservationTime;
+  const baseUntil = this.arrivalConfirmedUntil || new Date(anchor.getTime() + graceMs);
   const expirationTime = baseUntil instanceof Date ? baseUntil : new Date(baseUntil);
   return new Date() > expirationTime;
 });

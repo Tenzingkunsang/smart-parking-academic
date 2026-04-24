@@ -76,6 +76,20 @@ router.get('/stats', protect, adminAuth, async (req, res) => {
     // Users currently blocked due to unpaid overstay debt
     const usersWithDebt = await User.countDocuments({ overstayDebt: { $gt: 0 } });
 
+    const noShowCount = await Reservation.countDocuments({ status: 'no-show' });
+    const peakUsageByHour = await Reservation.aggregate([
+      { $match: { checkInTime: { $ne: null } } },
+      { $group: { _id: { $hour: '$checkInTime' }, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 }
+    ]);
+    const spotPerformance = await Reservation.aggregate([
+      { $match: { status: { $in: ['completed', 'no-show'] } } },
+      { $group: { _id: '$parkingSpot', bookings: { $sum: 1 }, noShows: { $sum: { $cond: [{ $eq: ['$status', 'no-show'] }, 1, 0] } }, revenue: { $sum: '$finalAmount' } } },
+      { $sort: { revenue: -1 } },
+      { $limit: 10 }
+    ]);
+
     res.json({
       success: true,
       data: {
@@ -89,6 +103,9 @@ router.get('/stats', protect, adminAuth, async (req, res) => {
         todayRevenue,            // base + overstay  (FIX [6])
         todayOverstayRevenue,    // overstay portion only
         usersWithDebt,           // users blocked from booking
+        noShowCount,
+        peakUsageByHour,
+        spotPerformance,
       },
     });
   } catch (error) {

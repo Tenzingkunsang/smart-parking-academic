@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const socketService = require('./src/services/socketService');
 const ReallocationService = require('./src/services/reallocationService');
+const jobSchedulerService = require('./src/services/jobSchedulerService');
 
 const app = express();
 const server = http.createServer(app);
@@ -70,6 +71,7 @@ mongoose.connect(MONGODB_URI)
     .then(() => {
       console.log('📊 MongoDB Connected Successfully');
       ReallocationService.startScheduler();
+      jobSchedulerService.startScheduler();
     })
     .catch(err => console.log('❌ DB Connection Error:', err));
 

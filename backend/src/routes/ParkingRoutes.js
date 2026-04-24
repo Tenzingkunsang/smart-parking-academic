@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ParkingSpot = require('../models/ParkingSpot');
+const Reservation = require('../models/Reservation');
 
 // @route   GET /api/parking/spots
 // @desc    Get all parking spots
@@ -40,6 +41,37 @@ router.get('/available', async (req, res) => {
       success: false,
       message: error.message
     });
+  }
+});
+
+// Smart recommendations: occupancy + time-of-day + user behavior.
+router.get('/recommendations', async (req, res) => {
+  try {
+    const hour = new Date().getHours();
+    const peakFactor = hour >= 8 && hour <= 11 ? 1.2 : hour >= 17 && hour <= 20 ? 1.15 : 1;
+    const spots = await ParkingSpot.find({ isActive: true }).lean();
+    const topNoShowSpots = await Reservation.aggregate([
+      { $match: { status: 'no-show' } },
+      { $group: { _id: '$parkingSpot', noShows: { $sum: 1 }, total: { $sum: 1 } } }
+    ]);
+    const noShowMap = new Map(topNoShowSpots.map((s) => [String(s._id), s.noShows / Math.max(1, s.total)]));
+
+    const ranked = spots
+      .map((s) => {
+        const availRatio = (s.availableSpaces || 0) / Math.max(1, s.totalSpaces || 1);
+        const noShowPenalty = noShowMap.get(String(s._id)) || 0;
+        const featureBonus = (s.features || []).length * 0.03;
+        const score =
+          (availRatio * 0.5 + (1 / Math.max(1, s.price || 50)) * 20 * 0.2 + featureBonus * 0.1) * peakFactor -
+          noShowPenalty * 0.2;
+        return { ...s, recommendationScore: Number(score.toFixed(3)) };
+      })
+      .sort((a, b) => b.recommendationScore - a.recommendationScore)
+      .slice(0, 10);
+
+    return res.json({ success: true, data: ranked });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -160,6 +192,54 @@ router.post('/spots', async (req, res) => {
       success: false,
       message: error.message
     });
+  }
+});
+
+// @route   PUT /api/parking/spots/:id
+// @desc    Update a parking spot
+router.put('/spots/:id', async (req, res) => {
+  try {
+    const update = { ...req.body };
+    if (update.location) {
+      update.location.lat = Number(update.location.lat);
+      update.location.lng = Number(update.location.lng);
+    }
+    if (update.totalSpaces != null) update.totalSpaces = Number(update.totalSpaces);
+    if (update.availableSpaces != null) update.availableSpaces = Number(update.availableSpaces);
+    if (update.price != null) update.price = Number(update.price);
+
+    const spot = await ParkingSpot.findByIdAndUpdate(req.params.id, update, {
+      new: true,
+      runValidators: true
+    });
+    if (!spot) {
+      return res.status(404).json({ success: false, message: 'Parking spot not found' });
+    }
+    return res.json({ success: true, data: spot });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// @route   PUT /api/parking/spots/:id/status
+// @desc    Update spot status and availability flags
+router.put('/spots/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    if (!['available', 'reserved', 'occupied', 'maintenance'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+    const spot = await ParkingSpot.findById(req.params.id);
+    if (!spot) {
+      return res.status(404).json({ success: false, message: 'Parking spot not found' });
+    }
+    spot.status = status;
+    spot.isReserved = status === 'reserved';
+    spot.isOccupied = status === 'occupied';
+    await spot.save();
+    return res.json({ success: true, data: spot });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 

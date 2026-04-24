@@ -5,9 +5,10 @@ const khaltiService = require('../services/khaltiService');
 const Reservation = require('../models/Reservation');
 const User = require('../models/User');
 const QRCode = require('qrcode');
-const ParkingSpot = require('../models/ParkingSpot');
 const socketService = require('../services/socketService');
 const notificationService = require('../services/notificationService');
+const { holdSpotAtomically } = require('../services/reservationLifecycleService');
+const jobSchedulerService = require('../services/jobSchedulerService');
 
 // ─── Khalti Config Test ──────────────────────────────────────────────────────
 router.get('/auth-test', (req, res) => {
@@ -40,7 +41,7 @@ router.post('/khalti/initiate', protect, async (req, res) => {
       });
     }
 
-    const reservation = await Reservation.findById(reservationId).populate('parkingSpot');
+    let reservation = await Reservation.findById(reservationId).populate('parkingSpot');
     if (!reservation) {
       return res.status(404).json({
         success: false,
@@ -175,40 +176,22 @@ router.post('/khalti/verify', protect, async (req, res) => {
 
     // Only process if reservation is still pending (prevent double processing)
     if (reservation.status === 'pending') {
-      const parkingSpot = await ParkingSpot.findById(reservation.parkingSpot._id);
-      const quantity = reservation.quantity || 1;
-
-      if (!parkingSpot || parkingSpot.availableSpaces < quantity) {
-        return res.status(400).json({
-          success: false,
-          message: 'Parking spot is no longer available'
-        });
-      }
-
-      // Update parking spot availability
-      parkingSpot.availableSpaces -= quantity;
-      parkingSpot.reservedSpaces += quantity;
-      parkingSpot.isReserved = true;
-      parkingSpot.status = 'reserved';
-      await parkingSpot.save();
-
-      // ✅ FIXED: transactionId is inside verification.data
-      reservation.status = 'reserved';
-      reservation.paymentStatus = 'completed';
-      reservation.paymentMethod = 'khalti';
+      const held = await holdSpotAtomically({ reservationId, paymentMethod: 'khalti' });
+      const parkingSpot = held.parkingSpot;
+      reservation = held.reservation;
       reservation.paymentReference = verification.data?.transactionId || pidx;
-
-      // Store Khalti transaction ID for refunds
       reservation.khaltiTransactionId = verification.data?.transactionId || null;
 
       // Generate QR code for check-in
       const qrData = JSON.stringify({
+        reservationId: reservation._id,
         bookingId: reservation._id,
         spotNumber: reservation.parkingSpot.spotNumber,
         location: reservation.parkingSpot.locationName
       });
       reservation.qrCodeData = await QRCode.toDataURL(qrData);
       await reservation.save();
+      await jobSchedulerService.scheduleReservationJobs(reservation);
 
       // ✅ FIXED: use socketService helper instead of raw io.emit
       socketService.notifySpotStatusChanged({

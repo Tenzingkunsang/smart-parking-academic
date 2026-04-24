@@ -46,7 +46,8 @@ const ReservationPage = () => {
   const handleBooking = async () => {
     try {
       setLoading(true);
-      const response = await reservationService.createReservation(spotId, duration);
+      const scheduledArrival = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const response = await reservationService.createReservation(spotId, duration, scheduledArrival);
       setBooking(response.data);
       setStep('payment');
     } catch (error) {
@@ -219,7 +220,7 @@ const ReservationPage = () => {
               onClick={() => handlePayment('cash')}
               className="w-full bg-gray-500 text-white px-4 py-3 rounded hover:bg-gray-600 transition flex items-center justify-between"
             >
-              <span>Pay at Location (Cash)</span>
+              <span>Pay on Spot</span>
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
               </svg>

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { API_BASE } from '../../config/api';
+import parkingService from '../../services/parkingService';
 import './AdminSpots.css';
 
 const AdminSpots = () => {
   const [spots, setSpots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     locationName: '',
     address: '',
@@ -25,8 +26,7 @@ const AdminSpots = () => {
 
   const fetchSpots = async () => {
     try {
-      const response = await fetch(`${API_BASE}/parking/spots`);
-      const data = await response.json();
+      const data = await parkingService.getAllSpots();
       if (data.success) {
         setSpots(data.data);
       }
@@ -40,58 +40,78 @@ const AdminSpots = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('token');
       const lat = parseFloat(formData.lat);
       const lng = parseFloat(formData.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
         toast.error('Enter valid latitude and longitude');
         return;
       }
-      const response = await fetch(`${API_BASE}/parking/spots`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          locationName: formData.locationName.trim(),
-          address: formData.address.trim(),
-          price: Number(formData.price) || 50,
-          totalSpaces: Number(formData.totalSpaces) || 10,
-          vehicleType: formData.vehicleType,
-          location: { lat, lng }
-        })
-      });
-      const data = await response.json();
+      const payload = {
+        locationName: formData.locationName.trim(),
+        address: formData.address.trim(),
+        price: Number(formData.price) || 50,
+        totalSpaces: Number(formData.totalSpaces) || 10,
+        vehicleType: formData.vehicleType,
+        location: { lat, lng }
+      };
+
+      const data = editingId
+        ? await parkingService.updateSpot(editingId, payload)
+        : await parkingService.createSpot(payload);
       if (data.success) {
         fetchSpots();
         setShowForm(false);
+        setEditingId(null);
         setFormData({
           locationName: '', address: '', lat: '', lng: '', price: 50, totalSpaces: 10, vehicleType: 'car'
         });
-        toast.success('Parking spot created successfully');
+        toast.success(editingId ? 'Parking spot updated successfully' : 'Parking spot created successfully');
       } else {
-        toast.error(data.message || 'Failed to create parking spot');
+        toast.error(data.message || 'Failed to save parking spot');
       }
     } catch (error) {
-      console.error('Error creating spot:', error);
-      toast.error('Failed to create parking spot');
+      console.error('Error saving spot:', error);
+      toast.error('Failed to save parking spot');
     }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this parking spot?')) return;
     try {
-      const token = localStorage.getItem('token');
-      await fetch(`${API_BASE}/parking/spots/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      await parkingService.deleteSpot(id);
       fetchSpots();
-      alert('Parking spot deleted');
+      toast.success('Parking spot deleted');
     } catch (error) {
       console.error('Error deleting spot:', error);
-      alert('Failed to delete parking spot');
+      toast.error('Failed to delete parking spot');
+    }
+  };
+
+  const handleEdit = (spot) => {
+    setEditingId(spot._id);
+    setShowForm(true);
+    setFormData({
+      locationName: spot.locationName || '',
+      address: spot.address || '',
+      lat: spot.location?.lat || '',
+      lng: spot.location?.lng || '',
+      price: spot.price || 50,
+      totalSpaces: spot.totalSpaces || 10,
+      vehicleType: spot.vehicleType || 'car'
+    });
+  };
+
+  const handleStatusChange = async (id, status) => {
+    try {
+      const data = await parkingService.updateSpotStatus(id, status);
+      if (data.success) {
+        toast.success('Spot status updated');
+        fetchSpots();
+      } else {
+        toast.error(data.message || 'Failed to update status');
+      }
+    } catch {
+      toast.error('Failed to update status');
     }
   };
 
@@ -111,7 +131,7 @@ const AdminSpots = () => {
 
       {showForm && (
         <form onSubmit={handleSubmit} className="spot-form">
-          <h3>Add New Parking Spot</h3>
+          <h3>{editingId ? 'Update Parking Spot' : 'Add New Parking Spot'}</h3>
           <div className="form-grid">
             <input type="text" placeholder="Location Name" value={formData.locationName} onChange={(e) => setFormData({...formData, locationName: e.target.value})} required />
             <input type="text" placeholder="Address" value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} required />
@@ -123,7 +143,7 @@ const AdminSpots = () => {
               <option value="car">Car</option>
               <option value="motorcycle">Motorcycle</option>
             </select>
-            <button type="submit" className="submit-btn">Create Spot</button>
+            <button type="submit" className="submit-btn">{editingId ? 'Update Spot' : 'Create Spot'}</button>
           </div>
         </form>
       )}
@@ -137,6 +157,7 @@ const AdminSpots = () => {
               <th>Spaces</th>
               <th>Price</th>
               <th>Type</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -149,6 +170,18 @@ const AdminSpots = () => {
                 <td>NPR {spot.price}</td>
                 <td>{spot.vehicleType}</td>
                 <td>
+                  <select
+                    value={spot.status || 'available'}
+                    onChange={(e) => handleStatusChange(spot._id, e.target.value)}
+                  >
+                    <option value="available">Available</option>
+                    <option value="reserved">Reserved</option>
+                    <option value="occupied">Occupied</option>
+                    <option value="maintenance">Maintenance</option>
+                  </select>
+                </td>
+                <td>
+                  <button onClick={() => handleEdit(spot)} className="action-button btn-edit">Edit</button>
                   <button onClick={() => handleDelete(spot._id)} className="delete-btn">Delete</button>
                 </td>
               </tr>

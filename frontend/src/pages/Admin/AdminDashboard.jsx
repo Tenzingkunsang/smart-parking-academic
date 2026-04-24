@@ -10,7 +10,9 @@ const AdminDashboard = () => {
     reservedSpots: 0,
     totalUsers: 0,
     activeReservations: 0,
-    todayRevenue: 0
+    todayRevenue: 0,
+    noShowCount: 0,
+    peakUsageByHour: []
   });
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -101,6 +103,19 @@ const AdminDashboard = () => {
             <p className="stat-number">NPR {stats.todayRevenue}</p>
           </div>
         </div>
+        <div className="stat-card">
+          <div className="stat-icon">N</div>
+          <div className="stat-info">
+            <h3>No-shows</h3>
+            <p className="stat-number">{stats.noShowCount}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-actions" style={{ marginTop: 12 }}>
+        <button className="action-btn" disabled>
+          Peak hours: {(stats.peakUsageByHour || []).map((p) => `${p._id}:00`).join(', ') || 'No data'}
+        </button>
       </div>
 
       <div className="admin-actions">

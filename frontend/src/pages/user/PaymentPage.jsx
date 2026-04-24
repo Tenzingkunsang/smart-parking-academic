@@ -7,7 +7,7 @@ import './PaymentPage.css';
 const PaymentPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { spot, duration, totalAmount, pendingReservationId } = location.state || {};
+  const { spot, duration, totalAmount, pendingReservationId, scheduledArrival } = location.state || {};
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('');
 
@@ -85,7 +85,9 @@ const PaymentPage = () => {
           totalAmount,
           paymentMethod,
           bookingId: reservation._id,
-          paymentStatus: 'completed'
+          paymentStatus: 'completed',
+          scheduledArrival: reservation.scheduledArrival || scheduledArrival,
+          createdAt: reservation.createdAt
         }
       });
     } catch (error) {
@@ -98,7 +100,7 @@ const PaymentPage = () => {
 
   const paymentMethods = [
     { id: 'khalti', name: 'Khalti', description: 'Pay with Khalti wallet' },
-    { id: 'cash', name: 'Cash', description: 'Pay at the parking location' }
+    { id: 'cash', name: 'Pay on Spot', description: 'Pay at the parking location on arrival' }
   ];
 
   return (
@@ -124,6 +126,12 @@ const PaymentPage = () => {
               <span>Duration</span>
               <span>{hours} hour(s) ({duration} minutes)</span>
             </div>
+            {scheduledArrival && (
+              <div className="summary-row">
+                <span>Scheduled Arrival</span>
+                <span>{new Date(scheduledArrival).toLocaleString()}</span>
+              </div>
+            )}
             <div className="summary-row">
               <span>Rate</span>
               <span>NPR {spot.price}/hour</span>

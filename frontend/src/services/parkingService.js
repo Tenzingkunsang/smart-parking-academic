@@ -49,6 +49,12 @@ class ParkingService {
     const response = await api.get(`/parking/nearby?lat=${lat}&lng=${lng}&radius=${radius}`);
     return response.data;
   }
+
+  // Smart recommendations based on demand/occupancy patterns
+  async getRecommendations() {
+    const response = await api.get('/parking/recommendations');
+    return response.data;
+  }
 }
 
 const parkingService = new ParkingService();

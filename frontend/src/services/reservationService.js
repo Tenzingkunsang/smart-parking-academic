@@ -2,10 +2,11 @@ import api from './api';
 
 class ReservationService {
   // Create a new reservation
-  async createReservation(parkingSpotId, duration) {
-    const response = await api.post('/reservations', { 
+  async createReservation(parkingSpotId, duration, scheduledArrival) {
+    const response = await api.post('/reservations/create', {
       parkingSpotId, 
-      duration 
+      duration,
+      scheduledArrival
     });
     return response.data;
   }

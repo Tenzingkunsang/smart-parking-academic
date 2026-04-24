@@ -22,6 +22,9 @@ const User          = require('../models/User');
 const Notification  = require('../models/Notification');
 const notificationService = require('../services/notificationService');
 const socketService       = require('../services/socketService');
+const WaitlistEntry = require('../models/WaitlistEntry');
+const jobSchedulerService = require('../services/jobSchedulerService');
+const { holdSpotAtomically, releaseReservedSpotAndPromote } = require('../services/reservationLifecycleService');
 const reservationController = require('../controllers/reservationController');
 const { protect } = require('../middleware/auth');
 
@@ -111,42 +114,19 @@ router.post('/confirm/:reservationId', protect, async (req, res) => {
   try {
     const { reservationId } = req.params;
     const { paymentMethod } = req.body;
+    const normalizedPaymentMethod = paymentMethod === 'pay_on_spot' ? 'cash' : paymentMethod;
 
-    if (paymentMethod === 'khalti') {
+    if (normalizedPaymentMethod === 'khalti') {
       return res.status(400).json({
         success: false,
         message: 'Use Khalti verify endpoint to confirm this reservation',
       });
     }
 
-    const reservation = await Reservation.findById(reservationId).populate('parkingSpot');
-    if (!reservation) {
-      return res.status(404).json({ success: false, message: 'Reservation not found' });
-    }
-    if (reservation.status !== 'pending') {
-      return res.status(400).json({ success: false, message: 'Reservation already processed' });
-    }
-
-    const parkingSpot = reservation.parkingSpot;
-    const quantity    = reservation.quantity || 1;
-
-    // Hold the parking spaces
-    parkingSpot.availableSpaces -= quantity;
-    parkingSpot.reservedSpaces  += quantity;
-    parkingSpot.isReserved = true;
-    parkingSpot.status     = 'reserved';
-    await parkingSpot.save();
-
-    // Update reservation
-    reservation.status        = 'reserved';
-    reservation.paymentStatus = 'completed';
-    reservation.paymentMethod = paymentMethod;
-
-    // FIX [7]: grace window anchored to scheduledArrival, not now
-    const graceMs = 15 * 60 * 1000;
-    reservation.arrivalConfirmedUntil = new Date(
-      reservation.scheduledArrival.getTime() + graceMs
-    );
+    const { reservation, parkingSpot } = await holdSpotAtomically({
+      reservationId,
+      paymentMethod: normalizedPaymentMethod || 'cash',
+    });
 
     // Generate QR code
     const qrData = JSON.stringify({
@@ -157,6 +137,7 @@ router.post('/confirm/:reservationId', protect, async (req, res) => {
     });
     reservation.qrCodeData = await QRCode.toDataURL(qrData);
     await reservation.save();
+    await jobSchedulerService.scheduleReservationJobs(reservation);
 
     await User.findByIdAndUpdate(req.user.id, { $inc: { totalBookings: 1 } });
 
@@ -182,31 +163,9 @@ router.post('/confirm/:reservationId', protect, async (req, res) => {
         duration:         reservation.duration,
         amount:           reservation.totalAmount,
         scheduledArrival: reservation.scheduledArrival.toISOString(),
-        paymentMethod,
+        paymentMethod: normalizedPaymentMethod || 'cash',
       }
     );
-
-    // Schedule "are you coming?" notification 30 min before scheduledArrival
-    // FIX [7]: uses scheduledArrival
-    const msUntilReminder = reservation.scheduledArrival.getTime() - Date.now() - 30 * 60 * 1000;
-    if (msUntilReminder > 0) {
-      setTimeout(async () => {
-        // Only send if still reserved (not yet checked in / cancelled)
-        const fresh = await Reservation.findById(reservation._id);
-        if (fresh && fresh.status === 'reserved') {
-          await notificationService.sendNotification(
-            req.user.id,
-            'Are you coming?',
-            `Your parking spot (#${parkingSpot.spotNumber}) is reserved for ${reservation.scheduledArrival.toLocaleTimeString()}. Confirm you're on your way so we keep your spot.`,
-            'arrival_confirmation',
-            {
-              reservationId: reservation._id,
-              expiresAt:     reservation.arrivalConfirmedUntil.toISOString(),
-            }
-          );
-        }
-      }, msUntilReminder);
-    }
 
     res.json({ success: true, data: reservation });
   } catch (error) {
@@ -245,6 +204,8 @@ router.post('/:reservationId/arrival-response', protect, async (req, res) => {
       // Extend the grace window from now
       reservation.arrivalConfirmedUntil = new Date(Date.now() + graceMs);
       await reservation.save();
+      await jobSchedulerService.cancelReservationJobs(reservation._id);
+      await jobSchedulerService.scheduleReservationJobs(reservation);
 
       await Notification.updateMany(
         { user: req.user.id, type: 'arrival_confirmation', 'meta.reservationId': reservation._id, read: false },
@@ -265,19 +226,7 @@ router.post('/:reservationId/arrival-response', protect, async (req, res) => {
     reservation.status = 'no-show';
     const quantity    = reservation.quantity || 1;
     const parkingSpot = reservation.parkingSpot;
-    if (parkingSpot) {
-      await parkingSpot.releaseSpace(quantity);
-      await parkingSpot.updateStatus(parkingSpot.reservedSpaces <= 0 ? 'available' : 'reserved');
-      const io = socketService.getIo();
-      if (io) {
-        io.emit('parkingSpotStatusChanged', {
-          spotId:          parkingSpot._id,
-          status:          parkingSpot.status,
-          availableSpaces: parkingSpot.availableSpaces,
-          reservedSpaces:  parkingSpot.reservedSpaces,
-        });
-      }
-    }
+    if (parkingSpot) await releaseReservedSpotAndPromote({ reservation, releaseReason: 'arrival_not_coming' });
     await Notification.updateMany(
       { user: req.user.id, type: 'arrival_confirmation', 'meta.reservationId': reservation._id, read: false },
       { $set: { read: true, readAt: new Date() } }
@@ -291,6 +240,7 @@ router.post('/:reservationId/arrival-response', protect, async (req, res) => {
       { sendEmail: false }
     );
     await reservation.save();
+    await jobSchedulerService.cancelReservationJobs(reservation._id);
     return res.json({ success: true });
   } catch (error) {
     console.error('Arrival response error:', error);
@@ -308,6 +258,12 @@ router.delete('/pending/:reservationId', protect, async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+// Backward-compatible alias for older frontend clients.
+router.post('/create-pending', protect, async (req, res) => {
+  req.url = '/create';
+  return router.handle(req, res);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -397,32 +353,32 @@ router.put('/:id/cancel', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Cannot cancel this reservation' });
     }
 
-    const parkingSpot = reservation.parkingSpot;
-    const quantity    = reservation.quantity || 1;
-
-    parkingSpot.availableSpaces += quantity;
-    parkingSpot.reservedSpaces  -= quantity;
-    if (parkingSpot.reservedSpaces <= 0) {
-      parkingSpot.isReserved = false;
-      parkingSpot.status     = 'available';
-    }
-    await parkingSpot.save();
-
     reservation.status = 'cancelled';
     await reservation.save();
-
-    const io = socketService.getIo();
-    if (io) {
-      io.emit('parkingSpotStatusChanged', {
-        spotId:          parkingSpot._id,
-        status:          parkingSpot.status,
-        availableSpaces: parkingSpot.availableSpaces,
-        reservedSpaces:  parkingSpot.reservedSpaces,
-      });
-    }
+    await releaseReservedSpotAndPromote({ reservation, releaseReason: 'user_cancelled' });
+    await jobSchedulerService.cancelReservationJobs(reservation._id);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/waitlist', protect, async (req, res) => {
+  try {
+    const { parkingSpotId, scheduledArrival, duration = 60, quantity = 1 } = req.body || {};
+    if (!parkingSpotId || !scheduledArrival) {
+      return res.status(400).json({ success: false, message: 'parkingSpotId and scheduledArrival are required' });
+    }
+    const entry = await WaitlistEntry.create({
+      user: req.user.id,
+      parkingSpot: parkingSpotId,
+      scheduledArrival: new Date(scheduledArrival),
+      duration,
+      quantity,
+    });
+    return res.json({ success: true, data: entry });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 

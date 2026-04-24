@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { API_BASE } from '../../config/api';
 import './PaymentSuccess.css';
 
 const PaymentSuccess = () => {
@@ -26,7 +27,7 @@ const PaymentSuccess = () => {
           return;
         }
 
-        const response = await fetch('http://localhost:5001/api/payments/khalti/verify', {
+        const response = await fetch(`${API_BASE}/payments/khalti/verify`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

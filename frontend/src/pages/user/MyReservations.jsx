@@ -105,10 +105,12 @@ const MyReservations = () => {
       state: {
         spot: reservation.parkingSpot,
         duration: reservation.duration,
-        totalAmount: reservation.totalAmount,
-        paymentMethod: 'Online Payment',
+        totalAmount: reservation.finalAmount || reservation.totalAmount,
+        paymentMethod: reservation.paymentMethod || 'khalti',
         bookingId: reservation._id,
-        reservationTime: reservation.reservationTime,
+        createdAt: reservation.createdAt,
+        scheduledArrival: reservation.scheduledArrival,
+        paymentStatus: reservation.paymentStatus || 'pending',
         status: reservation.status
       }
     });
@@ -269,16 +271,22 @@ const MyReservations = () => {
                         <span>{reservation.duration} mins</span>
                       </div>
                       <div className="detail-item">
-                        <label>Reservation Date</label>
-                        <span>{formatDate(reservation.reservationTime)}</span>
+                        <label>Scheduled Date</label>
+                        <span>{formatDate(reservation.scheduledArrival || reservation.reservationTime)}</span>
                       </div>
                       <div className="detail-item">
-                        <label>Reservation Time</label>
-                        <span>{formatTime(reservation.reservationTime)}</span>
+                        <label>Scheduled Time</label>
+                        <span>{formatTime(reservation.scheduledArrival || reservation.reservationTime)}</span>
                       </div>
                       <div className="detail-item">
                         <label>Total Amount</label>
-                        <span className="amount">Rs. {reservation.totalAmount || 0}</span>
+                        <span className="amount">Rs. {reservation.finalAmount || reservation.totalAmount || 0}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Payment</label>
+                        <span>
+                          {reservation.paymentMethod === 'cash' ? 'Pay on Spot' : 'Khalti'} · {reservation.paymentStatus || 'pending'}
+                        </span>
                       </div>
                     </div>
 
