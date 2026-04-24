@@ -13,6 +13,7 @@ const router  = express.Router();
 const User        = require('../models/User');
 const Reservation = require('../models/Reservation');
 const ParkingSpot = require('../models/ParkingSpot');
+const ScheduledJob = require('../models/ScheduledJob');
 const { protect, adminAuth } = require('../middleware/auth');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,6 +191,56 @@ router.put('/users/:id/clear-debt', protect, adminAuth, async (req, res) => {
     res.json({ success: true, message: 'Overstay debt cleared', data: user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/jobs/metrics', protect, adminAuth, async (req, res) => {
+  try {
+    const [pending, completed, failed] = await Promise.all([
+      ScheduledJob.countDocuments({ status: 'pending' }),
+      ScheduledJob.countDocuments({ status: 'completed' }),
+      ScheduledJob.countDocuments({ status: 'failed' }),
+    ]);
+    const latencyRows = await ScheduledJob.aggregate([
+      { $match: { status: 'completed' } },
+      { $project: { latencyMs: { $subtract: ['$updatedAt', '$runAt'] } } },
+      { $group: { _id: null, avgLatencyMs: { $avg: '$latencyMs' }, maxLatencyMs: { $max: '$latencyMs' } } }
+    ]);
+    return res.json({
+      success: true,
+      data: {
+        pending,
+        completed,
+        failed,
+        avgLatencyMs: Math.round(latencyRows[0]?.avgLatencyMs || 0),
+        maxLatencyMs: Math.round(latencyRows[0]?.maxLatencyMs || 0),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/jobs/failed', protect, adminAuth, async (req, res) => {
+  try {
+    const jobs = await ScheduledJob.find({ status: 'failed' }).sort('-updatedAt').limit(100);
+    return res.json({ success: true, data: jobs });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/jobs/:id/retry', protect, adminAuth, async (req, res) => {
+  try {
+    const job = await ScheduledJob.findByIdAndUpdate(
+      req.params.id,
+      { $set: { status: 'pending', runAt: new Date(), lastError: null } },
+      { new: true }
+    );
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+    return res.json({ success: true, data: job });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 

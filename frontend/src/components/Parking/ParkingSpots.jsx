@@ -36,6 +36,7 @@ const ParkingSpots = () => {
   const [mapExpanded, setMapExpanded] = useState(false);
   const [recommendedSpots, setRecommendedSpots] = useState([]);
   const [featureFilters, setFeatureFilters] = useState([]);
+  const [modalMode, setModalMode] = useState('book');
 
   const cardRefs = useRef({});
   const socketRef = useRef(null);
@@ -289,8 +290,17 @@ const ParkingSpots = () => {
       }
     }
     setModalSpot(spot);
+    setModalMode('book');
     setShowModal(true);
   }, [userPosition, navigate]);
+
+  const openWaitlist = useCallback((spot) => {
+    const token = localStorage.getItem('token');
+    if (!token) { navigate('/login'); return; }
+    setModalSpot(spot);
+    setModalMode('waitlist');
+    setShowModal(true);
+  }, [navigate]);
 
   const confirmGeofenceAndBook = () => {
     if (geoConfirm?.spot) { setModalSpot(geoConfirm.spot); setShowModal(true); }
@@ -324,6 +334,28 @@ const ParkingSpots = () => {
       toast.error('Booking failed. Please try again.');
     } finally {
       setShowModal(false);
+    }
+  };
+
+  const handleJoinWaitlist = async (spotId, duration, scheduledArrival) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/reservations/waitlist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ parkingSpotId: spotId, duration, scheduledArrival, quantity: 1 }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('Added to waitlist. We will notify you when available.');
+      } else {
+        toast.error(data.message || 'Failed to join waitlist');
+      }
+    } catch {
+      toast.error('Failed to join waitlist');
+    } finally {
+      setShowModal(false);
+      setModalMode('book');
     }
   };
 
@@ -653,11 +685,11 @@ const ParkingSpots = () => {
                       <button
                         type="button"
                         className="sheet-book-btn"
-                        disabled={spot.status !== 'available' || (avInfo && avInfo.avail === 0)}
-                        onClick={() => openBooking(spot)}
+                        disabled={false}
+                        onClick={() => (spot.status === 'available' && (!avInfo || avInfo.avail > 0) ? openBooking(spot) : openWaitlist(spot))}
                         aria-label={`Book ${spot.locationName}`}
                       >
-                        Book now
+                        {spot.status === 'available' && (!avInfo || avInfo.avail > 0) ? 'Book now' : 'Join waitlist'}
                       </button>
                     </div>
                   </div>
@@ -715,6 +747,8 @@ const ParkingSpots = () => {
           isOpen={showModal}
           onClose={() => setShowModal(false)}
           onConfirm={handleConfirmBooking}
+          onJoinWaitlist={handleJoinWaitlist}
+          mode={modalMode}
         />
       )}
 

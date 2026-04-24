@@ -95,6 +95,14 @@ const userSchema = new mongoose.Schema({
   googleEmailVerificationExpiresAt: {
     type: Date,
     default: null
+  },
+  behaviorProfile: {
+    punctualityScore: { type: Number, default: 0.7 },
+    noShowRate: { type: Number, default: 0 },
+    completedRate: { type: Number, default: 0 },
+    totalSessions: { type: Number, default: 0 },
+    score: { type: Number, default: 0.7 },
+    lastCalculatedAt: { type: Date, default: null }
   }
 }, {
   timestamps: true

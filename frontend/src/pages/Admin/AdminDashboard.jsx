@@ -15,6 +15,8 @@ const AdminDashboard = () => {
     peakUsageByHour: []
   });
   const [loading, setLoading] = useState(true);
+  const [jobMetrics, setJobMetrics] = useState(null);
+  const [failedJobs, setFailedJobs] = useState([]);
   const navigate = useNavigate();
 
   const checkAdminAccess = useCallback(() => {
@@ -37,12 +39,33 @@ const AdminDashboard = () => {
       if (data.success) {
         setStats(data.data);
       }
+
+      const metricsRes = await fetch('http://localhost:5001/api/admin/jobs/metrics', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const metricsData = await metricsRes.json();
+      if (metricsData.success) setJobMetrics(metricsData.data);
+
+      const failedRes = await fetch('http://localhost:5001/api/admin/jobs/failed', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const failedData = await failedRes.json();
+      if (failedData.success) setFailedJobs(failedData.data || []);
     } catch (error) {
       console.error('Error fetching stats:', error);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const retryJob = async (jobId) => {
+    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+    await fetch(`http://localhost:5001/api/admin/jobs/${jobId}/retry`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    fetchStats();
+  };
 
   useEffect(() => {
     checkAdminAccess();
@@ -117,6 +140,24 @@ const AdminDashboard = () => {
           Peak hours: {(stats.peakUsageByHour || []).map((p) => `${p._id}:00`).join(', ') || 'No data'}
         </button>
       </div>
+
+      {jobMetrics && (
+        <div className="admin-actions" style={{ marginTop: 12 }}>
+          <button className="action-btn" disabled>
+            Jobs: pending {jobMetrics.pending} · failed {jobMetrics.failed} · avg latency {jobMetrics.avgLatencyMs}ms
+          </button>
+        </div>
+      )}
+
+      {failedJobs.length > 0 && (
+        <div className="admin-actions" style={{ marginTop: 12, flexDirection: 'column', alignItems: 'stretch' }}>
+          {failedJobs.slice(0, 5).map((job) => (
+            <button key={job._id} onClick={() => retryJob(job._id)} className="action-btn">
+              Retry {job.type} ({job.lastError || 'no error'})
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="admin-actions">
         <button onClick={() => navigate('/admin/spots')} className="action-btn">

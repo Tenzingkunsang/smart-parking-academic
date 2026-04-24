@@ -8,6 +8,7 @@ import './MyReservations.css';
 
 const MyReservations = () => {
   const [reservations, setReservations] = useState([]);
+  const [waitlistEntries, setWaitlistEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cancellingId, setCancellingId] = useState(null);
@@ -34,11 +35,36 @@ const MyReservations = () => {
       } else {
         setError(data.message || 'Failed to fetch reservations');
       }
+
+      const waitlistRes = await fetch(`${API_BASE}/reservations/waitlist/my`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const waitlistData = await waitlistRes.json();
+      if (waitlistData.success) setWaitlistEntries(waitlistData.data || []);
     } catch (error) {
       console.error('Error fetching reservations:', error);
       setError('Failed to load reservations');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLeaveWaitlist = async (entryId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/reservations/waitlist/${entryId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('Removed from waitlist');
+        fetchReservations();
+      } else {
+        toast.error(data.message || 'Failed to remove waitlist entry');
+      }
+    } catch {
+      toast.error('Failed to remove waitlist entry');
     }
   };
 
@@ -215,6 +241,23 @@ const MyReservations = () => {
 
       {/* Main Content Container */}
       <div className="reservations-container">
+        {waitlistEntries.length > 0 && (
+          <div className="reservation-card" style={{ marginBottom: '1rem' }}>
+            <div className="card-header"><div className="spot-info"><h3>My Waitlist</h3><div className="spot-location">Pending auto-promotion</div></div></div>
+            <div className="card-body">
+              {waitlistEntries.map((entry) => (
+                <div key={entry._id} className="details-grid" style={{ marginBottom: '0.75rem' }}>
+                  <div className="detail-item"><label>Location</label><span>{entry.parkingSpot?.locationName}</span></div>
+                  <div className="detail-item"><label>Spot</label><span>#{entry.parkingSpot?.spotNumber}</span></div>
+                  <div className="detail-item"><label>Arrival</label><span>{new Date(entry.scheduledArrival).toLocaleString()}</span></div>
+                  <div className="detail-item"><label>Duration</label><span>{entry.duration} mins</span></div>
+                  <button className="btn-cancel" onClick={() => handleLeaveWaitlist(entry._id)}>Leave waitlist</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {reservations.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon empty-icon-svg" aria-hidden>

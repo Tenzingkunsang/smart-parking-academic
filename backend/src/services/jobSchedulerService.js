@@ -3,6 +3,7 @@ const ScheduledJob = require('../models/ScheduledJob');
 const Reservation = require('../models/Reservation');
 const notificationService = require('./notificationService');
 const { releaseReservedSpotAndPromote } = require('./reservationLifecycleService');
+const { recalculateUserBehavior } = require('./userBehaviorService');
 
 async function scheduleReservationJobs(reservation) {
   const reminderAt = new Date(reservation.scheduledArrival.getTime() - 30 * 60 * 1000);
@@ -64,6 +65,7 @@ async function runPendingJobs() {
         if (reservation.status === 'reserved' && !reservation.checkInTime && new Date() > reservation.arrivalConfirmedUntil) {
           reservation.status = 'no-show';
           await reservation.save();
+          await recalculateUserBehavior(reservation.user);
           await releaseReservedSpotAndPromote({ reservation, releaseReason: 'no_show' });
           await notificationService.sendNotification(
             reservation.user,

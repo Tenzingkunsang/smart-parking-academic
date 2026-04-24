@@ -19,6 +19,7 @@ const User               = require('../models/User');
 const Notification       = require('../models/Notification');
 const notificationService = require('../services/notificationService');
 const socketService      = require('../services/socketService');
+const { recalculateUserBehavior } = require('../services/userBehaviorService');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -116,6 +117,7 @@ exports.checkIn = async (req, res) => {
 
     emitSpotChange(spot);
     await reservation.save();
+    await recalculateUserBehavior(reservation.user);
 
     // FIX [2]: schedule "10 min left" warning before booked time ends
     // Fires at: checkInTime + duration - 10 min
@@ -215,6 +217,7 @@ exports.checkOut = async (req, res) => {
 
     emitSpotChange(spot);
     await reservation.save();
+    await recalculateUserBehavior(reservation.user);
 
     // FIX [5]: if overstay → save debt on user, block new bookings
     if (overstayCharge > 0) {

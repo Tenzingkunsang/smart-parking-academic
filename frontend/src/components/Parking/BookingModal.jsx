@@ -23,7 +23,7 @@ function minArrivalValue() {
   return d.toISOString().slice(0, 16);
 }
 
-const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
+const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode = 'book' }) => {
   const [step,          setStep]         = useState(1);
   const [duration,      setDuration]     = useState(60);
   const [arrivalValue,  setArrivalValue] = useState('');   // FIX [1]: datetime-local string
@@ -68,8 +68,11 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
     setLoading(true);
     try {
       const scheduledArrival = new Date(arrivalValue).toISOString();
-      // FIX [1]: pass scheduledArrival alongside duration
-      await onConfirm(spot._id, duration, scheduledArrival);
+      if (mode === 'waitlist') {
+        await onJoinWaitlist?.(spot._id, duration, scheduledArrival);
+      } else {
+        await onConfirm(spot._id, duration, scheduledArrival);
+      }
     } finally {
       setLoading(false);
     }
@@ -94,8 +97,8 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
-          <h2 id="booking-modal-title">
-            {step === 1 ? 'Book parking' : 'Confirm booking'}
+            <h2 id="booking-modal-title">
+            {step === 1 ? (mode === 'waitlist' ? 'Join waitlist' : 'Book parking') : (mode === 'waitlist' ? 'Confirm waitlist' : 'Confirm booking')}
           </h2>
           <button type="button" onClick={onClose} className="modal-close" aria-label="Close">
             &times;
@@ -203,7 +206,11 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
           /* ── Step 2: Review + confirm ──────────────────────────────────── */
           <>
             <div className="modal-body">
-              <p className="confirm-lead">Please confirm your booking details before payment.</p>
+              <p className="confirm-lead">
+                {mode === 'waitlist'
+                  ? 'Confirm your waitlist request. We will notify you when a spot opens up.'
+                  : 'Please confirm your booking details before payment.'}
+              </p>
               <div className="confirm-summary">
                 <div className="confirm-row">
                   <span>Location</span>
@@ -246,7 +253,7 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm }) => {
                 disabled={loading}
                 className="btn-primary"
               >
-                {loading ? 'Processing…' : 'Confirm booking'}
+                {loading ? 'Processing…' : (mode === 'waitlist' ? 'Join waitlist' : 'Confirm booking')}
               </button>
             </div>
           </>

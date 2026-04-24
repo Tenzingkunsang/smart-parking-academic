@@ -25,6 +25,7 @@ const socketService       = require('../services/socketService');
 const WaitlistEntry = require('../models/WaitlistEntry');
 const jobSchedulerService = require('../services/jobSchedulerService');
 const { holdSpotAtomically, releaseReservedSpotAndPromote } = require('../services/reservationLifecycleService');
+const { recalculateUserBehavior } = require('../services/userBehaviorService');
 const reservationController = require('../controllers/reservationController');
 const { protect } = require('../middleware/auth');
 
@@ -240,6 +241,7 @@ router.post('/:reservationId/arrival-response', protect, async (req, res) => {
       { sendEmail: false }
     );
     await reservation.save();
+    await recalculateUserBehavior(reservation.user);
     await jobSchedulerService.cancelReservationJobs(reservation._id);
     return res.json({ success: true });
   } catch (error) {
@@ -377,6 +379,26 @@ router.post('/waitlist', protect, async (req, res) => {
       quantity,
     });
     return res.json({ success: true, data: entry });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/waitlist/my', protect, async (req, res) => {
+  try {
+    const list = await WaitlistEntry.find({ user: req.user.id, promoted: false })
+      .populate('parkingSpot', 'locationName spotNumber price')
+      .sort('-createdAt');
+    return res.json({ success: true, data: list });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.delete('/waitlist/:id', protect, async (req, res) => {
+  try {
+    await WaitlistEntry.findOneAndDelete({ _id: req.params.id, user: req.user.id, promoted: false });
+    return res.json({ success: true });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

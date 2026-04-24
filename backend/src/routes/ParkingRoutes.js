@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const ParkingSpot = require('../models/ParkingSpot');
 const Reservation = require('../models/Reservation');
+const User = require('../models/User');
+const { protect } = require('../middleware/auth');
 
 // @route   GET /api/parking/spots
 // @desc    Get all parking spots
@@ -45,7 +47,7 @@ router.get('/available', async (req, res) => {
 });
 
 // Smart recommendations: occupancy + time-of-day + user behavior.
-router.get('/recommendations', async (req, res) => {
+router.get('/recommendations', protect, async (req, res) => {
   try {
     const hour = new Date().getHours();
     const peakFactor = hour >= 8 && hour <= 11 ? 1.2 : hour >= 17 && hour <= 20 ? 1.15 : 1;
@@ -56,6 +58,8 @@ router.get('/recommendations', async (req, res) => {
     ]);
     const noShowMap = new Map(topNoShowSpots.map((s) => [String(s._id), s.noShows / Math.max(1, s.total)]));
 
+    const user = await User.findById(req.user.id).lean();
+    const userScore = user?.behaviorProfile?.score ?? 0.7;
     const ranked = spots
       .map((s) => {
         const availRatio = (s.availableSpaces || 0) / Math.max(1, s.totalSpaces || 1);
@@ -63,7 +67,8 @@ router.get('/recommendations', async (req, res) => {
         const featureBonus = (s.features || []).length * 0.03;
         const score =
           (availRatio * 0.5 + (1 / Math.max(1, s.price || 50)) * 20 * 0.2 + featureBonus * 0.1) * peakFactor -
-          noShowPenalty * 0.2;
+          noShowPenalty * 0.2 +
+          userScore * 0.15;
         return { ...s, recommendationScore: Number(score.toFixed(3)) };
       })
       .sort((a, b) => b.recommendationScore - a.recommendationScore)
