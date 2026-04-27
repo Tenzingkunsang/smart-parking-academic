@@ -1,9 +1,82 @@
-/* Global CSS Variables - SmartPark Brand Colors */
+/* SmartPark design tokens (light/dark) */
 :root {
-  --primary-black: #000000;
-  --primary-green: #00ff00;
-  --primary-green-dark: #00cc00;
-  --primary-green-light: #33ff33;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --font-xs: 0.75rem;
+  --font-sm: 0.875rem;
+  --font-md: 1rem;
+  --font-lg: 1.125rem;
+  --font-xl: 1.5rem;
+  --font-2xl: 2rem;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0b1324;
+  --surface: #111827;
+  --surface-2: #1f2937;
+  --text: #f8fafc;
+  --text-muted: #94a3b8;
+  --primary: #6366f1;
+  --primary-2: #4f46e5;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --surface-border: rgba(255, 255, 255, 0.12);
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --primary-black: #0b1324;
+  --dark-black: #0b1324;
+  --card-black: #111827;
+  --gray-light: #f8fafc;
+  --gray-medium: #94a3b8;
+  --gray-dark: #64748b;
+  --primary-indigo: #6366f1;
+  --primary-indigo-hover: #4f46e5;
+  --primary-indigo-muted: rgba(99, 102, 241, 0.18);
+  --primary-green: #22d3a6;
+  --dark-green: #16a34a;
+  --gray-100: #f5f5f5;
+  --gray-200: #e5e5e5;
+  --gray-300: #d4d4d4;
+  --gray-400: #a3a3a3;
+  --gray-500: #737373;
+  --gray-600: #525252;
+  --gray-700: #404040;
+  --gray-800: #262626;
+  --gray-900: #171717;
+  --gray-950: #0a0a0a;
+}
+
+:root[data-theme='light'] {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #eef2ff;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --primary: #4f46e5;
+  --primary-2: #4338ca;
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --surface-border: rgba(15, 23, 42, 0.12);
+  --shadow-soft: 0 10px 24px rgba(2, 6, 23, 0.08);
+  --primary-black: #f8fafc;
+  --dark-black: #f1f5f9;
+  --card-black: #ffffff;
+  --gray-light: #0f172a;
+  --gray-medium: #475569;
+  --gray-dark: #64748b;
+  --primary-indigo: #4f46e5;
+  --primary-indigo-hover: #4338ca;
+  --primary-indigo-muted: rgba(79, 70, 229, 0.12);
+  --primary-green: #059669;
+  --dark-green: #047857;
   --gray-100: #f5f5f5;
   --gray-200: #e5e5e5;
   --gray-300: #d4d4d4;
@@ -28,8 +101,8 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: var(--gray-950);
-  color: white;
+  background: var(--bg);
+  color: var(--text);
 }
 
 code {
@@ -44,11 +117,11 @@ code {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--gray-900);
+  background: var(--surface);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--gray-700);
+  background: var(--text-muted);
   border-radius: 4px;
 }
 
@@ -58,19 +131,19 @@ code {
 
 /* Selection Color */
 ::selection {
-  background: var(--primary-green);
-  color: var(--primary-black);
+  background: var(--primary);
+  color: #fff;
 }
 
 /* Link Styles */
 a {
-  color: var(--primary-green);
+  color: var(--primary);
   text-decoration: none;
   transition: color 0.2s;
 }
 
 a:hover {
-  color: var(--primary-green-light);
+  color: var(--primary-2);
 }
 
 /* Button Styles */
@@ -128,6 +201,11 @@ input, select, textarea {
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+@keyframes sp-skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .fade-in {

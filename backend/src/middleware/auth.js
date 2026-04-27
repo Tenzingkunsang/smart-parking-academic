@@ -17,7 +17,19 @@ exports.protect = async (req, res, next) => {
   
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'smartpark_academic_2025');
+    if (decoded.type && decoded.type !== 'access') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token type'
+      });
+    }
     req.user = await User.findById(decoded.id).select('-password');
+    if (!req.user || !req.user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authorized'
+      });
+    }
     next();
   } catch (error) {
     return res.status(401).json({

@@ -29,10 +29,9 @@
     "socket.io-client": "^4.8.3",
     "sweetalert2": "^11.26.24",
     "web-vitals": "^2.1.4"
-    
   },
   "scripts": {
-   "start": "GENERATE_SOURCEMAP=false react-scripts start",
+    "start": "GENERATE_SOURCEMAP=false react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -41,7 +40,6 @@
     "extends": [
       "react-app",
       "react-app/jest"
-      
     ]
   },
   "browserslist": {
@@ -55,7 +53,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-    
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0"
   }
-  
 }

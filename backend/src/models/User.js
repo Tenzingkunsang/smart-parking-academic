@@ -103,6 +103,21 @@ const userSchema = new mongoose.Schema({
     totalSessions: { type: Number, default: 0 },
     score: { type: Number, default: 0.7 },
     lastCalculatedAt: { type: Date, default: null }
+  },
+  refreshTokens: [{
+    tokenHash: { type: String, required: true },
+    expiresAt: { type: Date, required: true },
+    createdAt: { type: Date, default: Date.now },
+    userAgent: { type: String, default: '' },
+    ipAddress: { type: String, default: '' },
+  }],
+  loginAttempts: {
+    type: Number,
+    default: 0,
+  },
+  lockUntil: {
+    type: Date,
+    default: null,
   }
 }, {
   timestamps: true

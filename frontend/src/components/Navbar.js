@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, CarFront } from 'lucide-react';
+import { Bell, LogOut, CarFront, Moon, Sun } from 'lucide-react';
 import { API_BASE, getAuthToken } from '../config/api';
+import { useThemeMode } from '../theme/ThemeProvider';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -12,6 +13,7 @@ const Navbar = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [preview, setPreview] = useState([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const { theme, toggleTheme } = useThemeMode();
   const location = useLocation();
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
@@ -37,8 +39,17 @@ const Navbar = () => {
   }, []);
 
   const handleLogout = () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (refreshToken) {
+      fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      }).catch(() => {});
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     setIsLoggedIn(false);
     setUser(null);
@@ -267,6 +278,9 @@ const Navbar = () => {
               <button type="button" className="logout-btn" onClick={handleLogout} aria-label="Sign out">
                 <LogOut size={18} strokeWidth={2} aria-hidden />
                 <span>Sign out</span>
+              </button>
+              <button type="button" className="logout-btn" onClick={toggleTheme} aria-label="Toggle theme">
+                {theme === 'dark' ? <Sun size={18} strokeWidth={2} aria-hidden /> : <Moon size={18} strokeWidth={2} aria-hidden />}
               </button>
             </div>
           ) : (

@@ -25,6 +25,7 @@ import AdminSpots from './pages/Admin/AdminSpots';
 import AdminReservations from './pages/Admin/AdminReservations';
 import AdminUsers from './pages/Admin/AdminUsers';
 import QRScannerPage from './pages/Admin/QRScannerPage';
+import OnboardingHint from './components/ui/OnboardingHint';
 
 import 'leaflet/dist/leaflet.css';
 import 'sweetalert2/dist/sweetalert2.min.css';
@@ -75,6 +76,7 @@ function App() {
             }}
           />
           <Navbar />
+          <OnboardingHint />
           
           <main className="main-content">
             <Routes>

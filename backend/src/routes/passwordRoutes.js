@@ -2,12 +2,18 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const crypto = require('crypto');
+const { body } = require('express-validator');
+const validateRequest = require('../middleware/validateRequest');
+const logger = require('../config/logger');
 
 // For testing - console log reset links instead of sending emails
 // In production, you would use nodemailer
 
 // Request password reset
-router.post('/forgot-password', async (req, res) => {
+const isStrongPassword = (password = '') =>
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(password);
+
+router.post('/forgot-password', [body('email').isEmail().withMessage('Valid email required')], validateRequest, async (req, res) => {
   try {
     const { email } = req.body;
     
@@ -21,9 +27,9 @@ router.post('/forgot-password', async (req, res) => {
     const user = await User.findOne({ email });
     
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'No account found with that email'
+      return res.json({
+        success: true,
+        message: 'If the account exists, a password reset link has been sent.'
       });
     }
     
@@ -35,22 +41,18 @@ router.post('/forgot-password', async (req, res) => {
     user.resetPasswordExpire = resetExpire;
     await user.save();
     
-    // For testing: log the reset link to console
+    // Reset link handling
     const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
-    
-    console.log('\n========================================');
-    console.log('🔐 PASSWORD RESET LINK (TESTING):');
-    console.log(`Reset URL: ${resetUrl}`);
-    console.log('========================================\n');
+    logger.info('password_reset_requested', { email: (email || '').trim().toLowerCase() });
     
     res.json({
       success: true,
-      message: 'Password reset link has been sent. Check console for the link (testing mode).',
-      resetLink: resetUrl // Only for testing - remove in production
+      message: 'If the account exists, a password reset link has been sent.',
+      ...(process.env.NODE_ENV !== 'production' ? { resetLink: resetUrl } : {})
     });
     
   } catch (error) {
-    console.error('Forgot password error:', error);
+    logger.error('forgot_password_failed', { message: error.message });
     res.status(500).json({
       success: false,
       message: 'Error sending reset email'
@@ -59,15 +61,15 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // Reset password
-router.post('/reset-password/:token', async (req, res) => {
+router.post('/reset-password/:token', [body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters')], validateRequest, async (req, res) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
     
-    if (!password || password.length < 6) {
+    if (!password || !isStrongPassword(password)) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters'
+        message: 'Password must include uppercase, lowercase, number, and symbol'
       });
     }
     
@@ -95,7 +97,7 @@ router.post('/reset-password/:token', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Reset password error:', error);
+    logger.error('reset_password_failed', { message: error.message });
     res.status(500).json({
       success: false,
       message: 'Error resetting password'
@@ -127,7 +129,7 @@ router.get('/verify-token/:token', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Verify token error:', error);
+    logger.error('verify_reset_token_failed', { message: error.message });
     res.status(500).json({
       success: false,
       message: 'Error verifying token'

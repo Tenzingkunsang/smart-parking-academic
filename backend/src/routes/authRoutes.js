@@ -5,17 +5,53 @@ const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const crypto = require('crypto');
 const emailService = require('../services/emailService');
+const { body } = require('express-validator');
+const validateRequest = require('../middleware/validateRequest');
+const logger = require('../config/logger');
+const RefreshToken = require('../models/RefreshToken');
+const { logAuthEvent } = require('../services/authAuditService');
 
 // Initialize OAuth2Client without specifying a single client ID
 // This allows verification of tokens from any Google app
 const googleClient = new OAuth2Client();
 
-// Generate JWT Token
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'smartpark_academic_2025', {
-    expiresIn: '30d',
+const ACCESS_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
+const REFRESH_EXPIRES_DAYS = Number(process.env.JWT_REFRESH_EXPIRES_DAYS || 30);
+const MAX_LOGIN_ATTEMPTS = Number(process.env.MAX_LOGIN_ATTEMPTS || 5);
+const LOCK_TIME_MS = Number(process.env.ACCOUNT_LOCK_MS || 15 * 60 * 1000);
+
+const generateAccessToken = (id) =>
+  jwt.sign({ id, type: 'access' }, process.env.JWT_SECRET || 'smartpark_academic_2025', {
+    expiresIn: ACCESS_EXPIRES_IN,
   });
+
+const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+const generateRefreshToken = async (user, req) => {
+  const token = crypto.randomBytes(48).toString('hex');
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
+  user.refreshTokens = (user.refreshTokens || []).filter((t) => new Date(t.expiresAt) > new Date());
+  user.refreshTokens.push({
+    tokenHash,
+    expiresAt,
+    userAgent: req.headers['user-agent'] || '',
+    ipAddress: req.ip || '',
+  });
+  await user.save();
+  const tokenDoc = await RefreshToken.create({
+    user: user._id,
+    tokenHash,
+    expiresAt,
+    status: 'active',
+    userAgent: req.headers['user-agent'] || '',
+    ipAddress: req.ip || '',
+  });
+  return { token, tokenDoc };
 };
+
+const hasStrongPassword = (password = '') =>
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(password);
 
 const generateVerificationCode = () => {
   // 6-digit numeric code
@@ -24,7 +60,15 @@ const generateVerificationCode = () => {
 };
 
 // @route   POST /api/auth/register
-router.post('/register', async (req, res) => {
+router.post(
+  '/register',
+  [
+    body('name').trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
+    body('email').isEmail().withMessage('Valid email is required'),
+    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  ],
+  validateRequest,
+  async (req, res) => {
   try {
     const { name, email, password, phone, vehicleNumber } = req.body;
     const normalizedEmail = (email || '').trim().toLowerCase();
@@ -36,6 +80,12 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Password is required for email registration'
+      });
+    }
+    if (!hasStrongPassword(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters and include uppercase, lowercase, number, and symbol'
       });
     }
     if (!normalizedEmail) {
@@ -65,10 +115,13 @@ router.post('/register', async (req, res) => {
       authMethod: 'email'
     });
 
+    const refreshPayload = await generateRefreshToken(user, req);
+    await logAuthEvent({ userId: user._id, event: 'register_success', req });
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      token: generateToken(user._id),
+      token: generateAccessToken(user._id),
+      refreshToken: refreshPayload.token,
       user: {
         id: user._id,
         name: user.name,
@@ -80,7 +133,7 @@ router.post('/register', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Register error:', error);
+    logger.error('auth_register_failed', { message: error.message });
     if (error.name === 'ValidationError') {
       const firstError = Object.values(error.errors)[0];
       return res.status(400).json({
@@ -107,7 +160,14 @@ router.post('/register', async (req, res) => {
 });
 
 // @route   POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post(
+  '/login',
+  [
+    body('email').isEmail().withMessage('Valid email is required'),
+    body('password').isLength({ min: 1 }).withMessage('Password is required'),
+  ],
+  validateRequest,
+  async (req, res) => {
   try {
     const { email, password } = req.body;
     const normalizedEmail = (email || '').trim().toLowerCase();
@@ -128,19 +188,40 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Lockout protection
+    if (user.lockUntil && new Date(user.lockUntil) > new Date()) {
+      return res.status(423).json({
+        success: false,
+        message: 'Account temporarily locked due to repeated failed logins'
+      });
+    }
+
     // Check password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      user.loginAttempts = (user.loginAttempts || 0) + 1;
+      if (user.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+        user.lockUntil = new Date(Date.now() + LOCK_TIME_MS);
+        user.loginAttempts = 0;
+        await logAuthEvent({ userId: user._id, event: 'account_locked', req });
+      }
+      await user.save();
+      await logAuthEvent({ userId: user._id, event: 'login_failed', req });
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
+    user.loginAttempts = 0;
+    user.lockUntil = null;
+    const refreshPayload = await generateRefreshToken(user, req);
+    await logAuthEvent({ userId: user._id, event: 'login_success', req });
 
     res.json({
       success: true,
       message: 'Login successful',
-      token: generateToken(user._id),
+      token: generateAccessToken(user._id),
+      refreshToken: refreshPayload.token,
       user: {
         id: user._id,
         name: user.name,
@@ -151,7 +232,7 @@ router.post('/login', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('auth_login_failed', { message: error.message });
     res.status(500).json({
       success: false,
       message: error.message
@@ -269,16 +350,16 @@ router.post('/google', async (req, res) => {
           userType: 'user',
           googleEmailVerified: false
         });
-        console.log('✅ New Google user created:', user.email);
+        logger.info('google_user_created', { email: user.email });
       } else {
         // Link Google ID to existing email user
         user.googleId = googleId;
         user.authMethod = 'google';
         await user.save();
-        console.log('✅ Google ID linked to existing user:', user.email);
+        logger.info('google_id_linked', { email: user.email });
       }
     } else {
-      console.log('✅ Google user login:', user.email);
+      logger.info('google_user_login', { email: user.email });
     }
 
     // Update last login
@@ -324,10 +405,12 @@ router.post('/google', async (req, res) => {
       });
     }
 
+    const refreshPayload = await generateRefreshToken(user, req);
     return res.json({
       success: true,
       message: 'Google authentication successful',
-      token: generateToken(user._id),
+      token: generateAccessToken(user._id),
+      refreshToken: refreshPayload.token,
       user: {
         id: user._id,
         name: user.name,
@@ -340,7 +423,7 @@ router.post('/google', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Google auth error:', error);
+    logger.error('google_auth_error', { message: error.message });
     res.status(400).json({
       success: false,
       message: 'Google authentication failed: ' + error.message
@@ -395,7 +478,7 @@ router.post('/google/send-verification-code', async (req, res) => {
       ...(shouldReturnCode ? { code: verificationCode } : {})
     });
   } catch (error) {
-    console.error('Send verification code error:', error);
+    logger.error('send_google_verification_code_failed', { message: error.message });
     return res.status(500).json({ success: false, message: 'Failed to send verification code' });
   }
 });
@@ -427,10 +510,12 @@ router.post('/google/verify-code', async (req, res) => {
     user.googleEmailVerificationExpiresAt = null;
     await user.save();
 
+    const refreshPayload = await generateRefreshToken(user, req);
     return res.json({
       success: true,
       message: 'Verification successful',
-      token: generateToken(user._id),
+      token: generateAccessToken(user._id),
+      refreshToken: refreshPayload.token,
       user: {
         id: user._id,
         name: user.name,
@@ -442,8 +527,80 @@ router.post('/google/verify-code', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Verify code error:', error);
+    logger.error('verify_google_code_failed', { message: error.message });
     return res.status(500).json({ success: false, message: 'Failed to verify code' });
+  }
+});
+
+router.post('/refresh', async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+    if (!refreshToken) {
+      return res.status(400).json({ success: false, message: 'refreshToken is required' });
+    }
+    const tokenHash = hashToken(refreshToken);
+    const tokenDoc = await RefreshToken.findOne({ tokenHash });
+    if (!tokenDoc) return res.status(401).json({ success: false, message: 'Invalid refresh token' });
+    const user = await User.findById(tokenDoc.user);
+    if (!user) return res.status(401).json({ success: false, message: 'Invalid refresh token' });
+
+    if (tokenDoc.status !== 'active') {
+      tokenDoc.status = 'reused';
+      await tokenDoc.save();
+      user.refreshTokens = [];
+      await user.save();
+      await RefreshToken.updateMany(
+        { user: user._id, status: 'active' },
+        { $set: { status: 'revoked', revokedAt: new Date() } }
+      );
+      await logAuthEvent({ userId: user._id, event: 'refresh_reuse_detected', req });
+      return res.status(401).json({ success: false, message: 'Refresh token reuse detected. Please sign in again.' });
+    }
+
+    if (new Date(tokenDoc.expiresAt) <= new Date()) {
+      tokenDoc.status = 'revoked';
+      tokenDoc.revokedAt = new Date();
+      await tokenDoc.save();
+      return res.status(401).json({ success: false, message: 'Refresh token expired' });
+    }
+    user.refreshTokens = (user.refreshTokens || []).filter((t) => t.tokenHash !== tokenHash);
+    const nextRefreshPayload = await generateRefreshToken(user, req);
+    tokenDoc.status = 'rotated';
+    tokenDoc.rotatedAt = new Date();
+    tokenDoc.replacedByTokenId = nextRefreshPayload.tokenDoc._id;
+    await tokenDoc.save();
+    await logAuthEvent({ userId: user._id, event: 'refresh_success', req });
+    return res.json({
+      success: true,
+      token: generateAccessToken(user._id),
+      refreshToken: nextRefreshPayload.token,
+    });
+  } catch (error) {
+    logger.error('refresh_token_failed', { message: error.message });
+    return res.status(500).json({ success: false, message: 'Unable to refresh token' });
+  }
+});
+
+router.post('/logout', async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+    if (!refreshToken) return res.json({ success: true });
+    const tokenHash = hashToken(refreshToken);
+    const tokenDoc = await RefreshToken.findOne({ tokenHash });
+    await User.updateOne(
+      { 'refreshTokens.tokenHash': tokenHash },
+      { $pull: { refreshTokens: { tokenHash } } }
+    );
+    if (tokenDoc) {
+      tokenDoc.status = 'revoked';
+      tokenDoc.revokedAt = new Date();
+      await tokenDoc.save();
+      await logAuthEvent({ userId: tokenDoc.user, event: 'logout', req });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    logger.error('logout_failed', { message: error.message });
+    return res.status(500).json({ success: false, message: 'Unable to logout' });
   }
 });
 

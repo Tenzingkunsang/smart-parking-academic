@@ -14,6 +14,7 @@ const User        = require('../models/User');
 const Reservation = require('../models/Reservation');
 const ParkingSpot = require('../models/ParkingSpot');
 const ScheduledJob = require('../models/ScheduledJob');
+const AuthAuditLog = require('../models/AuthAuditLog');
 const { protect, adminAuth } = require('../middleware/auth');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -239,6 +240,19 @@ router.post('/jobs/:id/retry', protect, adminAuth, async (req, res) => {
     );
     if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
     return res.json({ success: true, data: job });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/security/auth-logs', protect, adminAuth, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit || 100), 200);
+    const logs = await AuthAuditLog.find()
+      .populate('user', 'email userType')
+      .sort('-createdAt')
+      .limit(limit);
+    return res.json({ success: true, data: logs });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

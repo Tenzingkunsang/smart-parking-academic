@@ -1,0 +1,9 @@
+{
+  "short_name": "SmartPark",
+  "name": "SmartPark Commercial",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#4f46e5",
+  "background_color": "#0b1324"
+}

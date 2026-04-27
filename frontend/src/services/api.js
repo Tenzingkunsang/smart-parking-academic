@@ -10,6 +10,8 @@ const api = axios.create({
   timeout: 10000,
 });
 
+let refreshPromise = null;
+
 // Add token to requests
 api.interceptors.request.use(
   (config) => {
@@ -27,10 +29,41 @@ api.interceptors.request.use(
 // Handle response errors
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+  async (error) => {
+    const originalRequest = error.config || {};
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (!refreshToken) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('authToken');
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
+
+      try {
+        if (!refreshPromise) {
+          refreshPromise = axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+        }
+        const refreshRes = await refreshPromise;
+        refreshPromise = null;
+        const newToken = refreshRes.data?.token;
+        const newRefresh = refreshRes.data?.refreshToken;
+        if (!newToken) throw new Error('No refreshed token returned');
+        localStorage.setItem('token', newToken);
+        localStorage.setItem('authToken', newToken);
+        if (newRefresh) localStorage.setItem('refreshToken', newRefresh);
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        refreshPromise = null;
+        localStorage.removeItem('token');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('refreshToken');
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
     }
     return Promise.reject(error);
   }

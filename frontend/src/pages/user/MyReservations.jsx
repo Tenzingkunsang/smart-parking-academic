@@ -4,6 +4,9 @@ import Swal from 'sweetalert2';
 import toast from 'react-hot-toast';
 import { Search } from 'lucide-react';
 import { API_BASE } from '../../config/api';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Skeleton from '../../components/ui/Skeleton';
 import './MyReservations.css';
 
 const MyReservations = () => {
@@ -194,8 +197,11 @@ const MyReservations = () => {
   if (loading) {
     return (
       <div className="reservations-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading your reservations...</p>
+        <Card style={{ width: 'min(860px, 94vw)', padding: 20 }}>
+          <Skeleton height={24} width="40%" />
+          <Skeleton height={16} width="70%" style={{ marginTop: 12 }} />
+          <Skeleton height={120} width="100%" style={{ marginTop: 16 }} />
+        </Card>
       </div>
     );
   }
@@ -206,9 +212,7 @@ const MyReservations = () => {
         <div className="error-icon">⚠️</div>
         <h3>Unable to Load Reservations</h3>
         <p>{error}</p>
-        <button onClick={fetchReservations} className="retry-button">
-          Try Again
-        </button>
+        <Button onClick={fetchReservations} variant="ghost">Try Again</Button>
       </div>
     );
   }
@@ -222,9 +226,9 @@ const MyReservations = () => {
             <h1>My Reservations</h1>
             <p>View and manage your parking bookings</p>
           </div>
-          <button className="book-new-btn" onClick={() => navigate('/parking')}>
+          <Button className="book-new-btn" onClick={() => navigate('/parking')}>
             + New Booking
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -242,7 +246,7 @@ const MyReservations = () => {
       {/* Main Content Container */}
       <div className="reservations-container">
         {waitlistEntries.length > 0 && (
-          <div className="reservation-card" style={{ marginBottom: '1rem' }}>
+          <Card className="reservation-card" style={{ marginBottom: '1rem' }}>
             <div className="card-header"><div className="spot-info"><h3>My Waitlist</h3><div className="spot-location">Pending auto-promotion</div></div></div>
             <div className="card-body">
               {waitlistEntries.map((entry) => (
@@ -251,11 +255,11 @@ const MyReservations = () => {
                   <div className="detail-item"><label>Spot</label><span>#{entry.parkingSpot?.spotNumber}</span></div>
                   <div className="detail-item"><label>Arrival</label><span>{new Date(entry.scheduledArrival).toLocaleString()}</span></div>
                   <div className="detail-item"><label>Duration</label><span>{entry.duration} mins</span></div>
-                  <button className="btn-cancel" onClick={() => handleLeaveWaitlist(entry._id)}>Leave waitlist</button>
+                  <Button className="btn-cancel" variant="danger" onClick={() => handleLeaveWaitlist(entry._id)}>Leave waitlist</Button>
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         )}
 
         {reservations.length === 0 ? (

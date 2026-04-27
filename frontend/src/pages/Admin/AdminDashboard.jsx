@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Card from '../../components/ui/Card';
+import Skeleton from '../../components/ui/Skeleton';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
@@ -73,7 +75,15 @@ const AdminDashboard = () => {
   }, [checkAdminAccess, fetchStats]);
 
   if (loading) {
-    return <div className="admin-loading">Loading dashboard...</div>;
+    return (
+      <div className="admin-loading">
+        <Card style={{ width: 'min(700px, 94vw)', padding: 18 }}>
+          <Skeleton height={22} width="30%" />
+          <Skeleton height={14} width="65%" style={{ marginTop: 10 }} />
+          <Skeleton height={120} width="100%" style={{ marginTop: 14 }} />
+        </Card>
+      </div>
+    );
   }
 
   return (

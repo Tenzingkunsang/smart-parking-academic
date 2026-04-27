@@ -4,7 +4,7 @@ import './LotGridModal.css';
 /**
  * LotGridModal
  *
- * Shows a visual grid of parking spaces inside a lot.
+ * Shows a visual gricd d of parking spaces inside a lot.
  * Since individual sub-spaces aren't separate DB records,
  * we generate a visual grid from totalSpaces / availableSpaces.
  *

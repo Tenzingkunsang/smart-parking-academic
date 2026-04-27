@@ -36,6 +36,7 @@ const Login = () => {
       if (data.success) {
         localStorage.setItem('token', data.token);
         localStorage.setItem('authToken', data.token);
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
 
         if (data.user.userType === 'admin') {
@@ -56,6 +57,7 @@ const Login = () => {
   const finishLogin = (data) => {
     localStorage.setItem('token', data.token);
     localStorage.setItem('authToken', data.token);
+    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
     localStorage.setItem('user', JSON.stringify(data.user));
 
     if (data.user.userType === 'admin') navigate('/admin');
