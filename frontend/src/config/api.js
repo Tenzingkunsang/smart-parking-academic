@@ -19,3 +19,40 @@ export function getSocketOrigin() {
     return 'http://localhost:5001';
   }
 }
+
+/**
+ * Standard fetch wrapper with timeout and Authorization header.
+ * Fixes compilation errors in Admin pages.
+ */
+export async function apiFetch(endpoint, options = {}) {
+  const token = getAuthToken();
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+    ...options.headers,
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 10000);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.status === 401) {
+      // Handle session expiry if needed
+    }
+    
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}

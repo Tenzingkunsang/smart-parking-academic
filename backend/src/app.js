@@ -12,6 +12,7 @@ const { notFound, errorHandler } = require('./middleware/errorHandler');
 const authRoutes = require('./routes/authRoutes');
 const parkingRoutes = require('./routes/ParkingRoutes');
 const reservationRoutes = require('./routes/reservationRoutes');
+const cancelReservationRoutes = require('./routes/cancelReservation.route');
 const adminRoutes = require('./routes/adminRoutes');
 const passwordRoutes = require('./routes/passwordRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
@@ -44,6 +45,7 @@ function createApp() {
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/parking', parkingRoutes);
   app.use('/api/v1/reservations', reservationRoutes);
+  app.use('/api/v1/reservations', cancelReservationRoutes);
   app.use('/api/v1/admin', adminRoutes);
   app.use('/api/v1/password', passwordRoutes);
   app.use('/api/v1/payments', paymentRoutes);
@@ -51,6 +53,7 @@ function createApp() {
   app.use('/api/auth', authRoutes);
   app.use('/api/parking', parkingRoutes);
   app.use('/api/reservations', reservationRoutes);
+  app.use('/api/reservations', cancelReservationRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/password', passwordRoutes);
   app.use('/api/payments', paymentRoutes);

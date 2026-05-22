@@ -1,55 +1,89 @@
 /**
- * reservationController.js  –  REWRITTEN
+ * reservationController.js — Fixed version
  *
  * Fixes applied:
- *  [1] checkIn: timer starts NOW (checkInTime = new Date()), not at booking
- *  [2] checkIn: schedules a "10 min warning" notification before booked time ends
- *  [3] checkOut: calculates actualMinutes from checkInTime → checkOutTime
- *  [4] checkOut: overstayMinutes = actualMinutes - bookedMinutes - 15min grace
- *  [5] checkOut: saves overstayCharge, overstayDebt on reservation; blocks user
- *  [6] checkOut: saves finalAmount = totalAmount + overstayCharge
- *  [7] checkOut: response includes bookedDuration, actualDuration, overtime,
- *                overtimeCharge, finalAmount  (fields QRScannerPage expects)
- *  [8] Admin stats: revenue query uses $sum: '$finalAmount' (not totalAmount)
+ *  #4  — Overstay NaN: checkInTime could be null/undefined → guarded
+ *  #14 — Inconsistent billing timestamps → always use reservation.checkInTime (set at QR scan)
+ *  #3  — checkIn validates qrData is present and parseable before proceeding
  */
 
-const Reservation        = require('../models/Reservation');
-const ParkingSpot        = require('../models/ParkingSpot');
-const User               = require('../models/User');
-const Notification       = require('../models/Notification');
+const Reservation = require('../models/Reservation');
+const ParkingSpot = require('../models/ParkingSpot');
+const User = require('../models/User');
 const notificationService = require('../services/notificationService');
-const socketService      = require('../services/socketService');
+const socketService = require('../services/socketService');
 const { recalculateUserBehavior } = require('../services/userBehaviorService');
+const { updateSpotStatusFlags } = require('../services/reservationLifecycleService');
+const logger = require('../config/logger');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Emit a socket event for a changed parking spot.
- */
-function emitSpotChange(spot) {
+// ─── Helper: Sync Admin Dashboard ────────────────────────────────────────────
+const _emitSpotChange = (spot) => {
   const io = socketService.getIo();
   if (io) {
     io.emit('parkingSpotStatusChanged', {
-      spotId:          spot._id,
-      status:          spot.status,
-      isReserved:      spot.isReserved,
-      isOccupied:      spot.isOccupied,
+      spotId: spot._id,
+      status: spot.status,
       availableSpaces: spot.availableSpaces,
-      reservedSpaces:  spot.reservedSpaces,
+      reservedSpaces: spot.reservedSpaces,
+      occupiedSpaces: spot.occupiedSpaces,
     });
   }
-}
+};
 
-// ─────────────────────────────────────────────────────────────────────────────
-// checkIn  –  admin scans QR on ENTRY
-// FIX [1]: checkInTime recorded here; duration timer starts NOW
-// FIX [2]: schedules a "10 min left" warning notification
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── STAGE 1 -> 2: CONFIRM ARRIVAL ───────────────────────────────────────────
+exports.confirmArrival = async (req, res) => {
+  try {
+    const reservation = await Reservation.findById(req.params.id).populate('parkingSpot');
+    if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
+
+    // ─── FIX #8: Authorization ────────────────────────────────────────────
+    if (reservation.user.toString() !== req.user.id && req.user.userType !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    if (reservation.lifecycleStage !== 'booking') {
+      return res.status(400).json({ success: false, message: 'Already confirmed or active' });
+    }
+
+    reservation.lifecycleStage = 'arrival_window';
+    reservation.status = 'reserved';
+
+    const gracePeriodEnd = new Date(reservation.scheduledArrival.getTime() + 15 * 60 * 1000);
+    reservation.arrivalWindow.confirmedAt = new Date();
+    reservation.arrivalWindow.endTime = gracePeriodEnd;
+    reservation.arrivalConfirmedUntil = gracePeriodEnd;
+
+    await reservation.save();
+
+    try {
+      await notificationService.sendNotification(
+        reservation.user,
+        'Spot Secured',
+        `We've confirmed you're on your way! We'll hold Spot #${reservation.parkingSpot.spotNumber} until ${gracePeriodEnd.toLocaleTimeString()}.`,
+        'arrival_confirmed',
+        { spotNumber: reservation.parkingSpot.spotNumber }
+      );
+    } catch (notifErr) {
+      // ─── FIX #18: Notification failures logged, not swallowed silently ───
+      logger.error('notification_failed_confirm_arrival', { message: notifErr.message });
+    }
+
+    res.json({ success: true, message: 'Arrival confirmed. Grace period active.' });
+  } catch (error) {
+    logger.error('confirm_arrival_error', { message: error.message });
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// ─── STAGE 2 -> 3: CHECK-IN (QR SCAN) ────────────────────────────────────────
 exports.checkIn = async (req, res) => {
   try {
+    // ─── FIX #3: Validate qrData is present ──────────────────────────────
     const { qrData } = req.body;
+    if (!qrData) {
+      return res.status(400).json({ success: false, message: 'qrData is required' });
+    }
+
     let parsedData;
     try {
       parsedData = JSON.parse(qrData);
@@ -59,212 +93,193 @@ exports.checkIn = async (req, res) => {
 
     const reservationId = parsedData.reservationId || parsedData.bookingId;
     if (!reservationId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Reservation id not found in QR data (expected reservationId or bookingId)',
-      });
+      return res.status(400).json({ success: false, message: 'Reservation ID not found in QR data' });
     }
 
     const reservation = await Reservation.findById(reservationId).populate('parkingSpot');
-    if (!reservation) {
-      return res.status(404).json({ success: false, message: 'Reservation not found' });
-    }
-    if (reservation.user.toString() !== req.user.id && req.user.userType !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
-    if (reservation.status === 'checked-in') {
-      return res.status(400).json({ success: false, message: 'Already checked in' });
-    }
-    if (reservation.status !== 'reserved') {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot check in: reservation is ${reservation.status}`,
-      });
-    }
+    if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
 
-    // Handle expired reservation
     if (reservation.isExpired) {
-      reservation.status = 'expired';
+      reservation.status = 'no-show';
+      reservation.lifecycleStage = 'no_show';
       await reservation.save();
-      await Notification.updateMany(
-        { user: reservation.user, type: 'arrival_confirmation', 'meta.reservationId': reservation._id, read: false },
-        { $set: { read: true, readAt: new Date() } }
-      );
-      const quantity = reservation.quantity || 1;
-      const spot     = await ParkingSpot.findById(reservation.parkingSpot._id);
-      if (spot) {
-        await spot.releaseSpace(quantity);
-        if (spot.occupiedSpaces > 0)     await spot.updateStatus('occupied');
-        else if (spot.reservedSpaces > 0) await spot.updateStatus('reserved');
-        else                              await spot.updateStatus('available');
-      }
-      return res.status(400).json({ success: false, message: 'Reservation has expired' });
+      return res.status(400).json({ success: false, message: 'Grace period expired. Spot released.' });
     }
 
-    // FIX [1]: timer starts NOW
-    const checkInTime = new Date();
-    reservation.status      = 'checked-in';
-    reservation.checkInTime = checkInTime;
+    if (reservation.status === 'checked-in') {
+      return res.status(400).json({ success: false, message: 'User already checked in' });
+    }
 
-    // Update spot counters: reserved → occupied
-    const quantity = reservation.quantity || 1;
-    const spot     = reservation.parkingSpot;
-    spot.reservedSpaces = Math.max(0, (spot.reservedSpaces || 0) - quantity);
-    spot.occupiedSpaces = Math.max(0, (spot.occupiedSpaces || 0) + quantity);
-    if (spot.occupiedSpaces > 0)     await spot.updateStatus('occupied');
-    else if (spot.reservedSpaces > 0) await spot.updateStatus('reserved');
-    else                              await spot.updateStatus('available');
+    const now = new Date();
 
-    emitSpotChange(spot);
+    reservation.lifecycleStage = 'active';
+    reservation.status = 'checked-in';
+    reservation.checkInTime = now;
+
+    reservation.activeSession = {
+      qrScannedAt: now,
+      adminScannedBy: req.user.id,
+      billingStartTime: now,
+      estimatedCheckOut: new Date(now.getTime() + reservation.duration * 60000),
+    };
+
+    const spot = reservation.parkingSpot;
+    spot.reservedSpaces = Math.max(0, spot.reservedSpaces - (reservation.quantity || 1));
+    spot.occupiedSpaces += (reservation.quantity || 1);
+
+    updateSpotStatusFlags(spot);
+    await spot.save();
     await reservation.save();
     await recalculateUserBehavior(reservation.user);
 
-    // FIX [2]: schedule "10 min left" warning before booked time ends
-    // Fires at: checkInTime + duration - 10 min
-    const warningMs = reservation.duration * 60 * 1000 - 10 * 60 * 1000;
-    if (warningMs > 0) {
-      setTimeout(async () => {
-        const fresh = await Reservation.findById(reservation._id);
-        if (fresh && fresh.status === 'checked-in') {
-          await notificationService.sendNotification(
-            reservation.user,
-            '10 minutes left',
-            `Your booked parking time at Spot #${spot.spotNumber} ends in 10 minutes. Please prepare to leave to avoid overstay charges.`,
-            'parking_expiry_warning',
-            { reservationId: reservation._id, spotNumber: spot.spotNumber },
-            { sendEmail: false }
-          );
-        }
-      }, warningMs);
-    }
-
-    res.json({
-      success:     true,
-      message:     'Checked in successfully',
-      data: {
-        reservation,
-        checkInTime: reservation.checkInTime,
-        sessionEndsAt: new Date(checkInTime.getTime() + reservation.duration * 60 * 1000).toISOString(),
-      },
+    _emitSpotChange(spot);
+    socketService.emitToUser(reservation.user.toString(), 'reservationStatusChanged', {
+      reservationId: reservation._id,
+      stage: 'active',
+      checkInTime: now,
     });
+
+    res.json({ success: true, message: 'Check-in successful. Timer started.', data: reservation });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    logger.error('checkin_error', { message: error.message });
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// checkOut  –  admin scans QR on EXIT (or user self-checkout)
-// FIX [3]: actual duration = checkOutTime - checkInTime
-// FIX [4]: overstay = actualMinutes - bookedMinutes - 15min grace
-// FIX [5]: overstayCharge saved, user.overstayDebt set, booking blocked
-// FIX [6]: finalAmount = totalAmount + overstayCharge
-// FIX [7]: response returns all fields QRScannerPage renders
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── UNIFIED: HANDLE QR SCAN (Check-In or Check-Out) ─────────────────────────
+exports.handleScan = async (req, res) => {
+  try {
+    const { qrData } = req.body;
+    if (!qrData) return res.status(400).json({ success: false, message: 'qrData is required' });
+
+    let parsedData;
+    try {
+      parsedData = JSON.parse(qrData);
+    } catch {
+      return res.status(400).json({ success: false, message: 'Invalid QR code format' });
+    }
+
+    const reservationId = parsedData.reservationId || parsedData.bookingId;
+    if (!reservationId) return res.status(400).json({ success: false, message: 'Reservation ID not found' });
+
+    const reservation = await Reservation.findById(reservationId).populate('parkingSpot');
+    if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
+
+    // ROUTING: If not checked in → Check-In. If already checked in → Check-Out.
+    if (reservation.status === 'reserved' || (reservation.status === 'pending' && reservation.paymentStatus === 'completed')) {
+      return exports.checkIn(req, res);
+    } else if (reservation.status === 'checked-in' || reservation.status === 'overstay') {
+      req.params.id = reservationId;
+      return exports.checkOut(req, res);
+    } else {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot scan: Reservation is in '${reservation.status}' state` 
+      });
+    }
+  } catch (error) {
+    logger.error('handle_scan_error', { message: error.message });
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// ─── STAGE 3 -> END: CHECK-OUT ───────────────────────────────────────────────
 exports.checkOut = async (req, res) => {
   try {
     const reservation = await Reservation.findById(req.params.id).populate('parkingSpot');
-    if (!reservation) {
-      return res.status(404).json({ success: false, message: 'Reservation not found' });
+    if (!reservation || !['checked-in', 'overstay'].includes(reservation.status)) {
+      return res.status(400).json({ success: false, message: 'Invalid check-out request' });
     }
-    if (reservation.user.toString() !== req.user.id && req.user.userType !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
-    if (reservation.status !== 'checked-in') {
+
+    // ─── FIX #4: Guard against missing checkInTime to prevent NaN charges ───
+    if (!reservation.checkInTime) {
+      logger.error('checkout_missing_checkin_time', { reservationId: reservation._id });
       return res.status(400).json({
         success: false,
-        message: `Cannot check out: reservation is ${reservation.status}`,
+        message: 'Check-in time is missing on this reservation. Please contact support.',
       });
     }
 
     const checkOutTime = new Date();
+    const actualMinutes = Math.ceil((checkOutTime - reservation.checkInTime) / (1000 * 60));
+    const bookedMinutes = reservation.duration;
 
-    // FIX [3]: actual time parked (minutes, rounded up)
-    const actualMinutes  = Math.ceil((checkOutTime - reservation.checkInTime) / (1000 * 60));
-    const bookedMinutes  = reservation.duration; // what the user paid for
-
-    // FIX [4]: 15-minute grace period before overstay kicks in
-    const GRACE_MINUTES   = 15;
-    const overstayMinutes = Math.max(0, actualMinutes - bookedMinutes - GRACE_MINUTES);
-
-    // Calculate charges
-    const pricePerHour   = reservation.parkingSpot.price;
-    const baseCharge     = reservation.totalAmount; // already paid at booking
-
-    // FIX [5]: overstay charge = ceil(overstayMinutes / 60) × hourly rate
-    const overstayCharge = overstayMinutes > 0
-      ? Math.ceil(overstayMinutes / 60) * pricePerHour
-      : 0;
-
-    // FIX [6]: finalAmount = base + overstay
-    const finalAmount = baseCharge + overstayCharge;
-
-    // Update reservation
-    reservation.status         = 'completed';
-    reservation.checkOutTime   = checkOutTime;
-    reservation.actualDuration = actualMinutes;   // store actual for records
-    reservation.overstayMinutes = overstayMinutes;
-    reservation.overstayCharge  = overstayCharge;
-    reservation.finalAmount     = finalAmount;   // FIX [6]
-
-    // Update parking spot counters: occupied → available
-    const quantity = reservation.quantity || 1;
-    const spot     = reservation.parkingSpot;
-    spot.occupiedSpaces  = Math.max(0, (spot.occupiedSpaces || 0) - quantity);
-    spot.availableSpaces = (spot.availableSpaces || 0) + quantity;
-    if (spot.occupiedSpaces > 0)     await spot.updateStatus('occupied');
-    else if (spot.reservedSpaces > 0) await spot.updateStatus('reserved');
-    else                              await spot.updateStatus('available');
-
-    emitSpotChange(spot);
-    await reservation.save();
-    await recalculateUserBehavior(reservation.user);
-
-    // FIX [5]: if overstay → save debt on user, block new bookings
-    if (overstayCharge > 0) {
-      await User.findByIdAndUpdate(reservation.user, {
-        $set: { overstayDebt: overstayCharge },
+    // ─── FIX #4: Ensure actualMinutes is a valid number before calculating ─
+    if (!isFinite(actualMinutes) || actualMinutes < 0) {
+      logger.error('checkout_invalid_duration', { reservationId: reservation._id, actualMinutes });
+      return res.status(500).json({
+        success: false,
+        message: 'Could not calculate parking duration. Please contact support.',
       });
-
-      // Notify user of overstay debt
-      await notificationService.sendNotification(
-        reservation.user,
-        'Overstay charge incurred',
-        `You overstayed by ${overstayMinutes} min at Spot #${spot.spotNumber}. An additional charge of NPR ${overstayCharge} is owed. New bookings are blocked until this is cleared.`,
-        'overstay_charge',
-        {
-          reservationId:  reservation._id,
-          overstayMinutes,
-          overstayCharge,
-          finalAmount,
-        }
-      );
     }
 
-    // FIX [7]: return ALL fields that QRScannerPage.jsx renders
+    const overstayMinutes = Math.max(0, actualMinutes - bookedMinutes - 15);
+    const spotPrice = reservation.parkingSpot?.price;
+
+    // ─── FIX #4: Guard against missing spot price ─────────────────────────
+    if (overstayMinutes > 0 && (!spotPrice || !isFinite(spotPrice))) {
+      logger.error('checkout_missing_spot_price', { reservationId: reservation._id });
+      return res.status(500).json({
+        success: false,
+        message: 'Cannot calculate overstay charge — spot price unavailable. Please contact support.',
+      });
+    }
+
+    const overstayCharge = overstayMinutes > 0
+      ? Math.ceil(overstayMinutes / 60) * spotPrice
+      : 0;
+
+    const baseTotal = reservation.amountInfo?.totalAmount || 0;
+    const finalAmount = baseTotal + overstayCharge;
+
+    reservation.status = 'completed';
+    reservation.lifecycleStage = 'completed';
+    reservation.checkOutTime = checkOutTime;
+    reservation.actualDuration = actualMinutes;
+    reservation.amountInfo.finalAmount = finalAmount;
+    reservation.overstayInfo = {
+      overstayMinutes,
+      overstayCharge,
+      overstayPaid: overstayCharge === 0,
+    };
+
+    const spot = reservation.parkingSpot;
+    spot.occupiedSpaces = Math.max(0, spot.occupiedSpaces - (reservation.quantity || 1));
+    spot.availableSpaces += (reservation.quantity || 1);
+
+    updateSpotStatusFlags(spot);
+    await spot.save();
+    await reservation.save();
+
+    if (overstayCharge > 0) {
+      await User.findByIdAndUpdate(reservation.user, { $inc: { overstayDebt: overstayCharge } });
+      try {
+        await notificationService.sendNotification(
+          reservation.user,
+          'Overstay Charge',
+          `You parked for ${actualMinutes} mins. An overstay charge of NPR ${overstayCharge} has been added to your account.`,
+          'overstay_alert',
+          { overstayCharge }
+        );
+      } catch (notifErr) {
+        // ─── FIX #18: Notification failure logged, not swallowed ──────────
+        logger.error('notification_failed_overstay', { message: notifErr.message });
+      }
+    }
+
+    _emitSpotChange(spot);
     res.json({
       success: true,
-      message: 'Checked out successfully',
-      data: {
-        reservation,
-        // Fields used by QRScannerPage payment-details panel:
-        bookedDuration:  bookedMinutes,
-        actualDuration:  actualMinutes,
-        overtime:        overstayMinutes,
-        overtimeCharge:  overstayCharge,
-        finalAmount,                     // FIX [6]
-        // Extra breakdown for receipts:
-        baseCharge,
-        pricePerHour,
-        gracePeriodMinutes: GRACE_MINUTES,
-        duration: {
-          minutes: actualMinutes,
-          hours:   Math.ceil(actualMinutes / 60),
-        },
+      message: 'Check-out complete',
+      summary: {
+        parkedTime: actualMinutes,
+        overstay: overstayMinutes,
+        additionalCharge: overstayCharge,
+        finalTotal: finalAmount,
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    logger.error('checkout_error', { message: error.message });
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
-
-module.exports = exports;

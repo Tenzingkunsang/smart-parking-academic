@@ -1,29 +1,15 @@
 import React, { useMemo } from 'react';
-import { X, Car } from 'lucide-react';
-import './LotGridModal.css';
-/**
- * LotGridModal
- *
- * Shows a visual gricd d of parking spaces inside a lot.
- * Since individual sub-spaces aren't separate DB records,
- * we generate a visual grid from totalSpaces / availableSpaces.
- *
- * Props:
- *   spot    – ParkingSpot object
- *   onClose – fn()
- *   onBook  – fn(spot)
- */
+import { X, Car, ArrowDown, ArrowUp, LayoutGrid, Zap } from 'lucide-react';
+
 const LotGridModal = ({ spot, onClose, onBook }) => {
   const total = spot.totalSpaces || 10;
   const available = spot.availableSpaces ?? 0;
   const reserved = spot.reservedSpaces ?? 0;
   const occupied = total - available - reserved;
 
-  // Build array of space objects
   const spaces = useMemo(() => {
     return Array.from({ length: total }, (_, i) => {
       const num = i + 1;
-      // Assign row letter (A, B, C...)
       const row = String.fromCharCode(65 + Math.floor(i / 4));
       const col = (i % 4) + 1;
       const label = `${row}-${col}`;
@@ -39,7 +25,6 @@ const LotGridModal = ({ spot, onClose, onBook }) => {
 
   const availCount = spaces.filter((s) => s.status === 'available').length;
 
-  // Split into rows of 4 (2 columns with aisle in between, like real lots)
   const rows = useMemo(() => {
     const result = [];
     for (let i = 0; i < spaces.length; i += 4) {
@@ -49,116 +34,130 @@ const LotGridModal = ({ spot, onClose, onBook }) => {
   }, [spaces]);
 
   return (
-    <div className="lot-modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Parking lot layout">
-      <div className="lot-modal-card" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6 bg-[#050505]/90 backdrop-blur-md animate-in fade-in duration-300">
+      <div 
+        className="w-full max-w-2xl bg-[#0a0a0a] border border-white/[0.08] rounded-[2.5rem] overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="h-1.5 w-full bg-cyan-400" />
 
         {/* Header */}
-        <div className="lot-modal-header">
-          <div>
-            <h2 className="lot-modal-title">{spot.locationName}</h2>
-            <p className="lot-modal-sub">{spot.address}</p>
+        <div className="p-8 border-b border-white/[0.05] flex justify-between items-center bg-white/[0.01]">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 rounded-xl bg-cyan-400/10 flex items-center justify-center text-cyan-400">
+                <LayoutGrid size={20} />
+             </div>
+             <div>
+                <h2 className="text-xl font-black font-display text-white tracking-tight leading-none uppercase">{spot.locationName}</h2>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Lot Visualization Grid</p>
+             </div>
           </div>
-          <button className="lot-modal-close" onClick={onClose} aria-label="Close">
-            <X size={18} />
+          <button onClick={onClose} className="w-10 h-10 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 hover:text-white transition-all">
+             <X size={20} />
           </button>
         </div>
 
-        {/* Stats row */}
-        <div className="lot-stats-row">
-          <div className="lot-stat">
-            <div className="lot-stat-dot available" />
-            <span className="lot-stat-num">{availCount}</span>
-            <span className="lot-stat-label">Free</span>
-          </div>
-          <div className="lot-stat">
-            <div className="lot-stat-dot reserved" />
-            <span className="lot-stat-num">{reserved}</span>
-            <span className="lot-stat-label">Reserved</span>
-          </div>
-          <div className="lot-stat">
-            <div className="lot-stat-dot occupied" />
-            <span className="lot-stat-num">{occupied > 0 ? occupied : 0}</span>
-            <span className="lot-stat-label">Occupied</span>
-          </div>
-          <div className="lot-stat total">
-            <span className="lot-stat-num">{total}</span>
-            <span className="lot-stat-label">Total</span>
-          </div>
-        </div>
-
-        {/* Visual grid */}
-        <div className="lot-grid-wrap">
-          {/* Entry label */}
-          <div className="lot-entry-label">▼ Entry</div>
-
-          <div className="lot-grid">
-            {rows.map((row, rIdx) => (
-              <div key={rIdx} className="lot-row">
-                {/* Left column (2 spaces) */}
-                <div className="lot-col">
-                  {row.slice(0, 2).map((space) => (
-                    <div
-                      key={space.label}
-                      className={`lot-space ${space.status}`}
-                      title={`Space ${space.label} — ${space.status}`}
-                    >
-                      {space.status === 'available' ? (
-                        <span className="lot-space-label">{space.label}</span>
-                      ) : (
-                        <Car size={16} className="lot-car-icon" />
-                      )}
-                    </div>
-                  ))}
+        {/* Body Scrollable */}
+        <div className="p-8 flex-1 overflow-y-auto custom-scrollbar">
+           
+           {/* Stats Summary */}
+           <div className="grid grid-cols-4 gap-4 mb-10">
+              {[
+                { label: 'Free', val: availCount, color: 'bg-emerald-500', text: 'text-emerald-400' },
+                { label: 'Held', val: reserved, color: 'bg-amber-500', text: 'text-amber-400' },
+                { label: 'Full', val: occupied > 0 ? occupied : 0, color: 'bg-slate-700', text: 'text-slate-500' },
+                { label: 'Total', val: total, color: 'bg-white', text: 'text-white' }
+              ].map((s) => (
+                <div key={s.label} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] text-center">
+                   <div className="flex items-center justify-center gap-2 mb-1">
+                      <div className={`w-1.5 h-1.5 rounded-full ${s.color}`} />
+                      <span className="text-[8px] font-black uppercase tracking-widest text-slate-600">{s.label}</span>
+                   </div>
+                   <span className={`text-xl font-display font-black ${s.text}`}>{s.val}</span>
                 </div>
+              ))}
+           </div>
 
-                {/* Aisle */}
-                <div className="lot-aisle">
-                  {rIdx === 0 && <span className="lot-aisle-arrow">↕</span>}
-                </div>
-
-                {/* Right column (2 spaces) */}
-                <div className="lot-col">
-                  {row.slice(2, 4).map((space) => (
-                    <div
-                      key={space.label}
-                      className={`lot-space ${space.status}`}
-                      title={`Space ${space.label} — ${space.status}`}
-                    >
-                      {space.status === 'available' ? (
-                        <span className="lot-space-label">{space.label}</span>
-                      ) : (
-                        <Car size={16} className="lot-car-icon" />
-                      )}
-                    </div>
-                  ))}
-                </div>
+           {/* Grid Visual */}
+           <div className="relative p-10 bg-white/[0.01] border border-white/[0.05] rounded-[2rem]">
+              <div className="flex items-center justify-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-[0.3em] mb-8">
+                 <ArrowDown size={14} /> Entry Sector
               </div>
-            ))}
-          </div>
 
-          {/* Exit label */}
-          <div className="lot-exit-label">▲ Exit</div>
+              <div className="space-y-6">
+                {rows.map((row, rIdx) => (
+                  <div key={rIdx} className="flex items-center justify-between gap-8">
+                    {/* Left block */}
+                    <div className="grid grid-cols-2 gap-3 flex-1">
+                      {row.slice(0, 2).map((space) => (
+                        <div
+                          key={space.label}
+                          className={`h-16 rounded-xl border flex items-center justify-center transition-all ${
+                            space.status === 'available' 
+                              ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' 
+                              : space.status === 'reserved'
+                              ? 'bg-amber-500/5 border-amber-500/20 text-amber-400'
+                              : 'bg-white/[0.02] border-white/5 text-slate-800'
+                          }`}
+                        >
+                          {space.status === 'available' ? (
+                            <span className="text-[10px] font-black font-display">{space.label}</span>
+                          ) : (
+                            <Car size={20} strokeWidth={1.5} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Aisle */}
+                    <div className="w-10 h-16 rounded-full bg-white/[0.02] border border-dashed border-white/5 flex items-center justify-center">
+                       <span className="text-slate-800 text-xs font-black">↕</span>
+                    </div>
+
+                    {/* Right block */}
+                    <div className="grid grid-cols-2 gap-3 flex-1">
+                      {row.slice(2, 4).map((space) => (
+                        <div
+                          key={space.label}
+                          className={`h-16 rounded-xl border flex items-center justify-center transition-all ${
+                            space.status === 'available' 
+                              ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' 
+                              : space.status === 'reserved'
+                              ? 'bg-amber-500/5 border-amber-500/20 text-amber-400'
+                              : 'bg-white/[0.02] border-white/5 text-slate-800'
+                          }`}
+                        >
+                          {space.status === 'available' ? (
+                            <span className="text-[10px] font-black font-display">{space.label}</span>
+                          ) : (
+                            <Car size={20} strokeWidth={1.5} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-[0.3em] mt-8">
+                 <ArrowUp size={14} /> Exit Sector
+              </div>
+           </div>
         </div>
 
-        {/* Legend */}
-        <div className="lot-legend">
-          <span><i className="legend-dot available" /> Free</span>
-          <span><i className="legend-dot reserved" /> Reserved</span>
-          <span><i className="legend-dot occupied" /> Occupied</span>
-        </div>
-
-        {/* Action */}
-        <div className="lot-modal-footer">
+        {/* Footer Action */}
+        <div className="p-8 border-t border-white/[0.05] bg-white/[0.01]">
           {availCount > 0 ? (
             <button
-              className="lot-book-btn"
               onClick={() => onBook(spot)}
+              className="w-full h-16 rounded-2xl bg-white text-black font-display font-black text-sm uppercase tracking-widest hover:bg-cyan-400 hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-2xl"
             >
-              Reserve a Space — NPR {spot.price}/hr
+              <Zap size={18} className="fill-current" />
+              <span>Link Temporal Reservation</span>
             </button>
           ) : (
-            <div className="lot-full-notice">
-              This lot is currently full. Check back soon.
+            <div className="w-full h-16 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center text-slate-500 font-black text-[10px] uppercase tracking-widest italic">
+              Sector Capacity Exceeded — Manual Waitlist Required
             </div>
           )}
         </div>

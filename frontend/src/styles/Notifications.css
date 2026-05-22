@@ -1,0 +1,49 @@
+.notifications-page {
+  padding-top: 8rem;
+  padding-bottom: 4rem;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+
+.notification-card {
+  padding: 1.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: 2rem;
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 1.5rem;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.notification-card.unread {
+  background: rgba(0, 242, 255, 0.02);
+  border-color: rgba(0, 242, 255, 0.15);
+}
+
+.notification-card.unread::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--accent-cyan);
+}
+
+.notification-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.125rem;
+  margin-bottom: 0.25rem;
+}
+
+.notification-message {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}

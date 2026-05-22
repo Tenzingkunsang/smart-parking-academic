@@ -1,0 +1,51 @@
+.payment-page {
+  padding-top: 8rem;
+  padding-bottom: 4rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+
+.payment-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3rem;
+}
+
+@media (min-width: 1024px) {
+  .payment-grid {
+    grid-template-columns: 1fr 1.5fr;
+  }
+}
+
+.summary-card {
+  padding: 2.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: 2.5rem;
+}
+
+.method-card {
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--border-glass);
+  border-radius: 2rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.method-card.selected {
+  background: rgba(0, 242, 255, 0.03);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 242, 255, 0.05);
+}
+
+.method-card:hover:not(.selected) {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.2);
+}

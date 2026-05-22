@@ -1,35 +1,21 @@
-/**
- * BookingModal.jsx  –  REWRITTEN
- *
- * Fix applied:
- *  [1] User now picks:  DATE  +  TIME  +  DURATION
- *      scheduledArrival is sent to the backend so the reallocation service
- *      and the "are you coming?" notification are anchored to a real future time.
- *
- * Previous version only had a duration selector — no arrival time picker.
- */
-
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Calendar } from 'lucide-react';
-import './BookingModal.css';
+import { MapPin, Clock, Calendar, X, CreditCard, ShieldCheck, Zap, Info, Loader2, ArrowRight, User } from 'lucide-react';
 
 const PLATE_KEY = 'vehiclePlate';
 
-/** Returns the minimum datetime-local value (now + 5 min, rounded up to nearest minute). */
 function minArrivalValue() {
   const d = new Date(Date.now() + 5 * 60 * 1000);
   d.setSeconds(0, 0);
-  // datetime-local format: YYYY-MM-DDTHH:MM
   return d.toISOString().slice(0, 16);
 }
 
 const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode = 'book' }) => {
-  const [step,          setStep]         = useState(1);
-  const [duration,      setDuration]     = useState(60);
-  const [arrivalValue,  setArrivalValue] = useState('');   // FIX [1]: datetime-local string
-  const [loading,       setLoading]      = useState(false);
-  const [vehiclePlate,  setVehiclePlate] = useState(() => localStorage.getItem(PLATE_KEY) || '');
-  const [arrivalError,  setArrivalError] = useState('');
+  const [step, setStep] = useState(1);
+  const [duration, setDuration] = useState(60);
+  const [arrivalValue, setArrivalValue] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [vehiclePlate, setVehiclePlate] = useState(() => localStorage.getItem(PLATE_KEY) || '');
+  const [arrivalError, setArrivalError] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -42,22 +28,19 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode =
 
   if (!isOpen) return null;
 
-  const addressLine = spot.address || spot.location?.address || '—';
-
   const calculateTotal = () => {
     const hours = Math.ceil(duration / 60);
     return hours * spot.price;
   };
 
-  // FIX [1]: validate arrival is in the future before moving to step 2
   const handleReviewClick = () => {
     if (!arrivalValue) {
-      setArrivalError('Please select an arrival date and time.');
+      setArrivalError('Temporal coordinate required.');
       return;
     }
     const arrival = new Date(arrivalValue);
     if (arrival <= new Date()) {
-      setArrivalError('Arrival time must be in the future.');
+      setArrivalError('Allocation must be in future time.');
       return;
     }
     setArrivalError('');
@@ -78,8 +61,8 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode =
     }
   };
 
-  const hoursLabel       = Math.ceil(duration / 60);
-  const total            = calculateTotal();
+  const hoursLabel = Math.ceil(duration / 60);
+  const total = calculateTotal();
   const arrivalFormatted = arrivalValue
     ? new Date(arrivalValue).toLocaleString(undefined, {
         weekday: 'short', month: 'short', day: 'numeric',
@@ -88,175 +71,154 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode =
     : '—';
 
   return (
-    <div className="modal-overlay" role="presentation" onClick={onClose}>
-      <div
-        className="modal-container"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="booking-modal-title"
+    <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6 bg-[#050505]/90 backdrop-blur-md animate-in fade-in duration-300">
+      <div 
+        className="w-full max-w-xl bg-[#0a0a0a] border border-white/[0.08] rounded-[2.5rem] overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-300"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-header">
-            <h2 id="booking-modal-title">
-            {step === 1 ? (mode === 'waitlist' ? 'Join waitlist' : 'Book parking') : (mode === 'waitlist' ? 'Confirm waitlist' : 'Confirm booking')}
-          </h2>
-          <button type="button" onClick={onClose} className="modal-close" aria-label="Close">
-            &times;
+        {/* Header Branding */}
+        <div className="h-1.5 w-full bg-cyan-400" />
+        
+        <div className="p-8 border-b border-white/[0.05] flex justify-between items-center bg-white/[0.01]">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 rounded-xl bg-cyan-400/10 flex items-center justify-center text-cyan-400">
+                <Zap size={20} className="fill-current" />
+             </div>
+             <h2 className="text-xl font-black font-display text-white tracking-tight uppercase">
+               {step === 1 ? 'Configure Link' : 'Final Validation'}
+             </h2>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 hover:text-white transition-all">
+             <X size={20} />
           </button>
         </div>
 
-        {/* ── Step 1: Pick arrival + duration ──────────────────────────────── */}
         {step === 1 ? (
-          <>
-            <div className="modal-body">
-              {/* Spot info */}
-              <div className="spot-info">
-                <h3>{spot.locationName}</h3>
-                <p className="spot-address">
-                  <MapPin size={14} aria-hidden />
-                  {addressLine}
-                </p>
-                <p className="spot-number">Spot #{spot.spotNumber}</p>
-              </div>
-
-              {/* Vehicle plate */}
-              <div className="duration-selector">
-                <label htmlFor="vehicle-plate">Vehicle plate (optional)</label>
-                <input
-                  id="vehicle-plate"
-                  type="text"
-                  autoComplete="off"
-                  placeholder="e.g. BA 1 PA 1234"
-                  value={vehiclePlate}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setVehiclePlate(v);
-                    if (v.trim()) localStorage.setItem(PLATE_KEY, v.trim());
-                    else          localStorage.removeItem(PLATE_KEY);
-                  }}
-                />
-              </div>
-
-              {/* FIX [1]: Arrival date & time picker */}
-              <div className="duration-selector">
-                <label htmlFor="arrival-datetime">
-                  <Calendar size={14} aria-hidden /> Arrival date &amp; time
-                </label>
-                <input
-                  id="arrival-datetime"
-                  type="datetime-local"
-                  min={minArrivalValue()}
-                  value={arrivalValue}
-                  onChange={(e) => {
-                    setArrivalValue(e.target.value);
-                    setArrivalError('');
-                  }}
-                />
-                {arrivalError && (
-                  <p className="field-error" role="alert">{arrivalError}</p>
-                )}
-              </div>
-
-              {/* Duration picker */}
-              <div className="duration-selector">
-                <label htmlFor="booking-duration">
-                  <Clock size={14} aria-hidden /> Duration
-                </label>
-                <select
-                  id="booking-duration"
-                  value={duration}
-                  onChange={(e) => setDuration(parseInt(e.target.value, 10))}
-                >
-                  <option value={30}>30 minutes</option>
-                  <option value={60}>1 hour</option>
-                  <option value={120}>2 hours</option>
-                  <option value={180}>3 hours</option>
-                  <option value={240}>4 hours</option>
-                </select>
-              </div>
-
-              {/* Price breakdown */}
-              <div className="price-breakdown">
-                <div className="price-row">
-                  <span>Hourly rate</span>
-                  <span>NPR {spot.price}</span>
-                </div>
-                <div className="price-row">
-                  <span>Billed duration</span>
-                  <span>{hoursLabel} hour{hoursLabel !== 1 ? 's' : ''}</span>
-                </div>
-                <div className="price-row total">
-                  <span>Estimated total</span>
-                  <span className="total-amount">NPR {total}</span>
-                </div>
-              </div>
+          <div className="p-8 space-y-8">
+            {/* Spot Brief */}
+            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex justify-between items-center">
+               <div className="space-y-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Active Node</span>
+                  <h3 className="text-lg font-black text-white font-display leading-none">{spot.locationName}</h3>
+                  <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]">{spot.location?.address || 'Standard Sector'}</p>
+               </div>
+               <div className="text-right">
+                  <span className="text-[10px] font-black text-cyan-400 block font-display">#{spot.spotNumber}</span>
+                  <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">ID</span>
+               </div>
             </div>
 
-            <div className="modal-footer">
-              <button type="button" onClick={onClose} className="btn-secondary">
-                Cancel
-              </button>
-              <button type="button" onClick={handleReviewClick} className="btn-primary">
-                Review &amp; confirm
-              </button>
-            </div>
-          </>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+               {/* Plate Input */}
+               <div className="space-y-2">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-600 ml-1">Vehicle Identifier</label>
+                  <div className="relative group">
+                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={14} />
+                     <input
+                        type="text"
+                        placeholder="BA 1 PA 1234"
+                        value={vehiclePlate}
+                        onChange={(e) => setVehiclePlate(e.target.value)}
+                        className="w-full h-12 bg-white/[0.03] border border-white/[0.08] rounded-xl pl-11 pr-4 text-xs font-bold text-white focus:outline-none focus:border-cyan-400/40 focus:bg-white/[0.05] transition-all"
+                     />
+                  </div>
+               </div>
 
+               {/* Duration Select */}
+               <div className="space-y-2">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-600 ml-1">Temporal Window</label>
+                  <div className="relative">
+                     <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={14} />
+                     <select
+                        value={duration}
+                        onChange={(e) => setDuration(parseInt(e.target.value))}
+                        className="w-full h-12 bg-white/[0.03] border border-white/[0.08] rounded-xl pl-11 pr-4 text-xs font-bold text-white appearance-none focus:outline-none focus:border-cyan-400/40"
+                     >
+                        <option value={30}>30 Minutes</option>
+                        <option value={60}>1 Hour</option>
+                        <option value={120}>2 Hours</option>
+                        <option value={180}>3 Hours</option>
+                        <option value={240}>4 Hours</option>
+                     </select>
+                  </div>
+               </div>
+
+               {/* Arrival Picker */}
+               <div className="col-span-full space-y-2">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-600 ml-1">Allocation Start</label>
+                  <div className="relative">
+                     <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={14} />
+                     <input
+                        type="datetime-local"
+                        min={minArrivalValue()}
+                        value={arrivalValue}
+                        onChange={(e) => { setArrivalValue(e.target.value); setArrivalError(''); }}
+                        className="w-full h-12 bg-white/[0.03] border border-white/[0.08] rounded-xl pl-11 pr-4 text-xs font-bold text-white focus:outline-none focus:border-cyan-400/40 transition-all [color-scheme:dark]"
+                     />
+                  </div>
+                  {arrivalError && <p className="text-[10px] font-bold text-red-500 mt-1 ml-1">{arrivalError}</p>}
+               </div>
+            </div>
+
+            {/* Total Estimate */}
+            <div className="p-6 rounded-2xl bg-cyan-400/5 border border-cyan-400/10 flex justify-between items-center">
+               <div className="flex flex-col">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400/60">Estimated Settlement</span>
+                  <span className="text-xs font-bold text-slate-400">Rs. {spot.price} / hr · {hoursLabel}h window</span>
+               </div>
+               <span className="text-2xl font-display font-black text-white">Rs. {total}</span>
+            </div>
+
+            <div className="flex gap-4 pt-2">
+               <button onClick={onClose} className="flex-1 h-14 rounded-xl bg-white/[0.03] border border-white/[0.08] text-slate-500 font-display font-black text-[10px] uppercase tracking-widest hover:text-white transition-all">Cancel</button>
+               <button onClick={handleReviewClick} className="flex-[2] h-14 rounded-xl bg-white text-black font-display font-black text-[10px] uppercase tracking-widest hover:bg-cyan-400 shadow-xl transition-all flex items-center justify-center gap-2">
+                  Review Allocation <ArrowRight size={14} />
+               </button>
+            </div>
+          </div>
         ) : (
-          /* ── Step 2: Review + confirm ──────────────────────────────────── */
-          <>
-            <div className="modal-body">
-              <p className="confirm-lead">
-                {mode === 'waitlist'
-                  ? 'Confirm your waitlist request. We will notify you when a spot opens up.'
-                  : 'Please confirm your booking details before payment.'}
-              </p>
-              <div className="confirm-summary">
-                <div className="confirm-row">
-                  <span>Location</span>
-                  <strong>{spot.locationName}</strong>
+          <div className="p-8 space-y-8 animate-in slide-in-from-right-4 duration-300">
+             <div className="text-center space-y-2">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4">
+                   <ShieldCheck className="text-emerald-500" size={28} />
                 </div>
-                <div className="confirm-row">
-                  <span>Spot</span>
-                  <strong>#{spot.spotNumber}</strong>
+                <h3 className="text-xl font-black font-display text-white tracking-tight leading-none uppercase">Confirm Hash</h3>
+                <p className="text-[11px] text-slate-500 font-medium">Verify temporal allocation parameters before link initialization.</p>
+             </div>
+
+             <div className="p-8 rounded-[2rem] bg-white/[0.01] border border-white/[0.06] space-y-5">
+                <div className="flex justify-between items-center">
+                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Unit Identification</span>
+                   <span className="text-sm font-bold text-white">{spot.locationName} <span className="text-cyan-400 font-display">#{spot.spotNumber}</span></span>
                 </div>
-                {/* FIX [1]: show scheduledArrival in summary */}
-                <div className="confirm-row">
-                  <span>Arrival</span>
-                  <strong>{arrivalFormatted}</strong>
+                <div className="flex justify-between items-center border-t border-white/5 pt-4">
+                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Temporal Start</span>
+                   <span className="text-sm font-bold text-white">{arrivalFormatted}</span>
                 </div>
-                <div className="confirm-row">
-                  <span>Duration</span>
-                  <strong>{duration} min ({hoursLabel} hr billed)</strong>
+                <div className="flex justify-between items-center border-t border-white/5 pt-4">
+                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Duration Allocation</span>
+                   <span className="text-sm font-bold text-white">{duration}m ({hoursLabel}h Billed)</span>
                 </div>
-                <div className="confirm-row highlight">
-                  <span>Total due</span>
-                  <strong className="confirm-total">NPR {total}</strong>
+                <div className="flex justify-between items-center border-t border-white/10 pt-6">
+                   <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Total Settlement</span>
+                   <span className="text-2xl font-display font-black text-white">Rs. {total}</span>
                 </div>
-              </div>
-              <p className="confirm-hint">
-                A reminder will be sent 30 min before your arrival time. Overstaying beyond a 15-minute grace period incurs additional charges.
-              </p>
+             </div>
+
+             <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.04] flex gap-4 items-start">
+                <Info size={16} className="text-slate-600 shrink-0 mt-0.5" />
+                <p className="text-[10px] leading-relaxed text-slate-500 font-medium italic">
+                   System lock will initiate upon confirmation. Arrival verification required within 15 minutes of scheduled time.
+                </p>
+             </div>
+
+             <div className="flex gap-4">
+               <button disabled={loading} onClick={() => setStep(1)} className="flex-1 h-14 rounded-xl bg-white/[0.03] border border-white/[0.08] text-slate-500 font-display font-black text-[10px] uppercase tracking-widest hover:text-white transition-all">Back</button>
+               <button disabled={loading} onClick={handleFinalConfirm} className="flex-[2] h-14 rounded-xl bg-white text-black font-display font-black text-[10px] uppercase tracking-widest hover:bg-cyan-400 transition-all flex items-center justify-center gap-2">
+                  {loading ? <Loader2 className="animate-spin" size={16} /> : (mode === 'waitlist' ? 'Link Waitlist' : 'Initiate Settlement')}
+               </button>
             </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="btn-secondary"
-                disabled={loading}
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                onClick={handleFinalConfirm}
-                disabled={loading}
-                className="btn-primary"
-              >
-                {loading ? 'Processing…' : (mode === 'waitlist' ? 'Join waitlist' : 'Confirm booking')}
-              </button>
-            </div>
-          </>
+          </div>
         )}
       </div>
     </div>

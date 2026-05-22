@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
 import CancelBookingModal from '../CancelBooking/CancelBookingModal';
 import { getCancellationStatus } from '../../utils/Cancellationpolicy';
-import './TicketPage.css';
+import { Printer, XCircle, ChevronLeft, Calendar, MapPin, CarFront, CreditCard, DollarSign, ArrowLeft, ShieldCheck, Ticket, Download, Info, Clock, Loader2, Zap } from 'lucide-react';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
 
 const TicketPage = () => {
   const location = useLocation();
@@ -28,17 +30,12 @@ const TicketPage = () => {
     if (spot && bookingId) {
       const qrData = JSON.stringify({
         reservationId: bookingId,
-        bookingId,
         spotNumber: spot.spotNumber,
         location: spot.locationName,
-        address: spot.location?.address || spot.address || 'Kathmandu',
-        vehicleType: spot.vehicleType,
-        price: spot.price,
-        duration,
       });
       setQrValue(qrData);
     }
-  }, [spot, bookingId, duration]);
+  }, [spot, bookingId]);
 
   useEffect(() => {
     if (!createdAt) return;
@@ -56,222 +53,125 @@ const TicketPage = () => {
   const hours = Math.ceil(duration / 60);
   const reservationStart = scheduledArrival ? new Date(scheduledArrival) : new Date(createdAt || Date.now());
   const checkInDeadline = new Date(reservationStart.getTime() + 15 * 60 * 1000);
-  const isPendingCash = paymentMethod === 'cash';
-
-  const getPaymentMethodLabel = (method) => {
-    if (!method) return 'Khalti';
-    if (method === 'cash') return 'Pay on Spot';
-    return method.charAt(0).toUpperCase() + method.slice(1);
-  };
 
   const handleCancelled = () => {
     setShowCancelModal(false);
     setIsCancelled(true);
   };
 
-  const getCancelBtnLabel = () => {
-    if (!cancelStatus) return 'Cancel Reservation';
-    if (!cancelStatus.canCancel) return 'Cancellation Closed';
-    if (cancelStatus.refundPercent === 100) return '🔄 Cancel & Full Refund';
-    if (cancelStatus.refundPercent === 50) return '🔄 Cancel & 50% Refund';
-    return 'Cancel Reservation';
-  };
-
   return (
-    <div className="ticket-container">
-      {/* Cancelled Banner */}
-      {isCancelled && (
-        <div className="cancelled-banner">
-          <strong>Reservation Cancelled.</strong>{' '}
-          {!isPendingCash && 'Your refund will be processed to your Khalti wallet within 3–5 business days.'}
-        </div>
-      )}
+    <div className="min-h-screen pt-32 pb-24 px-6 max-w-5xl mx-auto flex flex-col items-center space-y-12 animate-in fade-in duration-700">
+      
+      <div className="fixed top-0 right-0 w-[400px] h-[400px] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
 
-      <div className={`ticket ${isCancelled ? 'ticket-cancelled' : ''}`}>
-        {/* Header */}
-        <div className="ticket-header">
-          <h1>SmartPark</h1>
-          <p>Parking Reservation Ticket</p>
-          <div className="ticket-id">ID: {bookingId || 'SP' + Date.now()}</div>
-          {isCancelled && <div className="cancelled-stamp">CANCELLED</div>}
-        </div>
-
-        <div className="ticket-body">
-          {/* Parking Details */}
-          <div className="ticket-section">
-            <h3>Parking Details</h3>
-            <div className="info-row">
-              <span className="label">Location</span>
-              <span className="value">{spot.locationName}</span>
-            </div>
-            <div className="info-row">
-              <span className="label">Address</span>
-              <span className="value">{spot.location?.address || 'Kathmandu'}</span>
-            </div>
-            <div className="info-row">
-              <span className="label">Spot Number</span>
-              <span className="value highlight">#{spot.spotNumber}</span>
-            </div>
-            <div className="info-row">
-              <span className="label">Vehicle Type</span>
-              <span className="value capitalize">{spot.vehicleType || 'Any'}</span>
-            </div>
-          </div>
-
-          {/* Reservation Details */}
-          <div className="ticket-section">
-            <h3>Reservation Details</h3>
-            <div className="info-row">
-              <span className="label">Duration</span>
-              <span className="value">{hours} hour(s) ({duration} minutes)</span>
-            </div>
-            <div className="info-row">
-              <span className="label">Scheduled Arrival</span>
-              <span className="value">{reservationStart.toLocaleString()}</span>
-            </div>
-            <div className="info-row">
-              <span className="label">Check-in Deadline</span>
-              <span className="value deadline">{checkInDeadline.toLocaleTimeString()}</span>
-            </div>
-          </div>
-
-          {/* Payment Details */}
-          <div className="ticket-section">
-            <h3>Payment Details</h3>
-            <div className="info-row">
-              <span className="label">Rate</span>
-              <span className="value">NPR {spot.price}/hour</span>
-            </div>
-            <div className="info-row">
-              <span className="label">Total Amount</span>
-              <span className="value total">NPR {totalAmount}</span>
-            </div>
-            <div className="info-row">
-              <span className="label">Payment Method</span>
-              <span className="value capitalize">{getPaymentMethodLabel(paymentMethod)}</span>
-            </div>
-            <div className="info-row">
-              <span className="label">Payment Status</span>
-              <span className={`value ${isPendingCash ? 'status-pending' : 'status-paid'}`}>
-                {isCancelled ? 'Cancelled' : isPendingCash ? 'Pending (Pay on Spot)' : (paymentStatus || 'Completed')}
-              </span>
-            </div>
-          </div>
-
-          {/* Pay on Spot Notice */}
-          {isPendingCash && !isCancelled && (
-            <div className="cash-notice-box">
-              <span className="cash-notice-icon">💵</span>
-              <div>
-                <strong>Pay on Spot Selected</strong>
-                <p>Please pay NPR {totalAmount} in cash to the parking attendant when you arrive.</p>
-              </div>
-            </div>
-          )}
-
-          {/* Cancellation Window Info (Khalti only, not cancelled) */}
-          {!isPendingCash && !isCancelled && cancelStatus && (
-            <div className={`cancel-window-info urgency-${cancelStatus.urgency}`}>
-              {cancelStatus.canCancel ? (
-                <>
-                  <strong>Cancellation available</strong>
-                  <p>
-                    {cancelStatus.refundPercent === 100
-                      ? 'Cancel within the next '
-                      : 'Cancel in the next '}
-                    <strong>{cancelStatus.minutesLeft} minute(s)</strong>
-                    {' '}for a <strong>{cancelStatus.refundPercent}% refund</strong> (NPR {Math.round(totalAmount * cancelStatus.refundPercent / 100)}).
-                  </p>
-                </>
-              ) : (
-                <>
-                  <strong>Cancellation window closed</strong>
-                  <p>The 30-minute cancellation period has passed. No refunds are available.</p>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* QR Code */}
-          {!isCancelled && (
-            <div className="ticket-qr">
-              <p>Scan this QR code at the parking entrance</p>
-              {qrValue ? (
-                <div className="qr-code-container">
-                  <QRCodeCanvas
-                    value={qrValue}
-                    size={180}
-                    level="H"
-                    includeMargin={true}
-                    bgColor="#FFFFFF"
-                    fgColor="#000000"
-                  />
-                  <p className="qr-hint">Show this QR code to the parking attendant</p>
-                </div>
-              ) : (
-                <div className="qr-loading"><p>Generating QR code...</p></div>
-              )}
-            </div>
-          )}
-
-          {/* Notes */}
-          {!isCancelled && (
-            <div className="ticket-notes">
-              <h4>Important Notes:</h4>
-              <ul>
-                <li>✓ Please check in within 15 minutes of your reservation time</li>
-                <li>✓ Show this QR code at the entrance for verification</li>
-                {isPendingCash && <li>✓ Have NPR {totalAmount} ready to pay on arrival</li>}
-                <li>✓ If you don't check in on time, your reservation may be cancelled</li>
-                <li>✓ For assistance, contact the parking attendant</li>
-              </ul>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="ticket-footer">
-          {!isCancelled && (
-            <>
-              <button className="btn-print" onClick={() => window.print()}>
-                Print Ticket
-              </button>
-
-              {/* Cancel button — shown for both cash and khalti */}
-              <button
-                className={`btn-cancel-ticket ${
-                  cancelStatus && !cancelStatus.canCancel && !isPendingCash
-                    ? 'disabled-cancel'
-                    : ''
-                }`}
-                onClick={() => setShowCancelModal(true)}
-                disabled={cancelStatus && !cancelStatus.canCancel && !isPendingCash}
-                title={
-                  cancelStatus && !cancelStatus.canCancel && !isPendingCash
-                    ? 'Cancellation window has passed'
-                    : 'Cancel this reservation'
-                }
-              >
-                {getCancelBtnLabel()}
-              </button>
-            </>
-          )}
-
-          <button className="btn-back" onClick={() => navigate('/parking')}>
-            {isCancelled ? 'Find New Parking' : 'Back to Parking'}
-          </button>
-        </div>
+      <div className="w-full max-w-2xl flex justify-between items-center print:hidden">
+         <button onClick={() => navigate('/reservations')} className="flex items-center gap-2 text-slate-500 hover:text-white transition-colors group">
+            <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-white">Back to Console</span>
+         </button>
+         <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => window.print()} className="!px-4 !py-3"><Printer size={18} /></Button>
+            <Button variant="secondary" className="!px-4 !py-3"><Download size={18} /></Button>
+         </div>
       </div>
 
-      {/* Cancel Modal */}
+      <Card className={`w-full max-w-xl !p-0 overflow-hidden relative ${isCancelled ? 'opacity-50 grayscale' : ''}`}>
+         <div className={`h-2 w-full ${isCancelled ? 'bg-red-500' : 'bg-cyan-400 animate-pulse'}`} />
+         
+         <div className="p-10 md:p-14 space-y-12">
+            <div className="flex justify-between items-start">
+               <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-cyan-400">
+                     <Ticket size={20} />
+                     <span className="text-[10px] font-black uppercase tracking-[0.2em]">Temporal Permit</span>
+                  </div>
+                  <h1 className="text-4xl font-black font-display tracking-tight text-white uppercase italic">SmartPark <span className="text-slate-700">/</span> Grid</h1>
+               </div>
+               <div className="text-right">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-1">Permit Hash</span>
+                  <span className="font-mono text-xs font-bold text-white bg-white/5 px-2 py-1 rounded-md border border-white/5">
+                     {bookingId?.substring(bookingId.length - 8).toUpperCase() || 'PENDING'}
+                  </span>
+               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-10">
+               <div className="space-y-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Allocation Zone</span>
+                  <h3 className="text-2xl font-black font-display text-white leading-tight">{spot.locationName}</h3>
+                  <p className="text-[10px] text-slate-500 font-medium">{spot.location?.address || 'Standard Sector'}</p>
+               </div>
+               <div className="text-right space-y-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Unit ID</span>
+                  <h3 className="text-4xl font-black font-display text-cyan-400 leading-none">#{spot.spotNumber}</h3>
+               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-10 pt-10 border-t border-white/5">
+               <div className="space-y-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Epoch Start</span>
+                  <div className="flex items-center gap-2 text-white font-bold text-lg">
+                     <Calendar size={16} className="text-cyan-400" />
+                     <span>{reservationStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-bold">{reservationStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+               </div>
+               <div className="text-right space-y-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Validation Deadline</span>
+                  <div className="flex items-center justify-end gap-2 text-red-400 font-bold text-lg">
+                     <Clock size={16} />
+                     <span>{checkInDeadline.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+               </div>
+            </div>
+
+            {!isCancelled && (
+               <div className="py-10 flex flex-col items-center gap-8 bg-white/[0.02] border border-white/5 rounded-[2.5rem]">
+                  <div className="bg-white p-6 rounded-3xl shadow-[0_0_50px_rgba(255,255,255,0.05)]">
+                     {qrValue ? (
+                        <QRCodeCanvas value={qrValue} size={180} level="H" includeMargin={true} />
+                     ) : (
+                        <Loader2 className="animate-spin text-slate-300" size={40} />
+                     )}
+                  </div>
+                  <div className="text-center space-y-2">
+                     <div className="flex items-center justify-center gap-2 text-emerald-400">
+                        <ShieldCheck size={18} />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">Hash Verified</span>
+                     </div>
+                     <p className="text-[10px] text-slate-500 font-medium max-w-[220px] mx-auto italic">
+                        Scan temporal token at gate terminal to authorize entry protocol.
+                     </p>
+                  </div>
+               </div>
+            )}
+
+            <div className="pt-10 border-t border-white/5 flex justify-between items-center">
+               <div className="space-y-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Settlement Total</span>
+                  <span className="text-3xl font-display font-black text-white italic">Rs.{totalAmount}</span>
+               </div>
+               <div className="text-right space-y-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Temporal duration</span>
+                  <span className="text-sm font-bold text-slate-400">{hours} Hour{hours > 1 ? 's' : ''} Allocation</span>
+               </div>
+            </div>
+         </div>
+         
+         <div className="p-6 bg-white/[0.01] border-t border-white/5 text-center">
+            <span className="text-[8px] font-black uppercase tracking-[0.4em] text-slate-700 italic">SmartPark Autonomous Grid System</span>
+         </div>
+      </Card>
+
+      {!isCancelled && cancelStatus?.canCancel && (
+         <button onClick={() => setShowCancelModal(true)} className="text-[10px] font-black uppercase tracking-[0.3em] text-red-500/40 hover:text-red-500 transition-colors">
+            Abort Permit Allocation
+         </button>
+      )}
+
       {showCancelModal && (
         <CancelBookingModal
-          booking={{
-            _id: bookingId,
-            createdAt: createdAt || new Date().toISOString(),
-            paymentMethod,
-            totalAmount,
-          }}
+          booking={{ _id: bookingId, createdAt, paymentMethod, totalAmount }}
           onClose={() => setShowCancelModal(false)}
           onCancelled={handleCancelled}
         />

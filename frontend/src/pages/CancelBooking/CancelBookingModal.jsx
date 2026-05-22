@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { getCancellationStatus, calculateRefundAmount } from '../../utils/Cancellationpolicy';
 import { API_BASE } from '../../config/api';
 import toast from 'react-hot-toast';
-import './CancelBookingModal.css';
 
 /**
  * CancelBookingModal

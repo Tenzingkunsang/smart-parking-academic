@@ -25,12 +25,12 @@ exports.getAvailableSpots = async (req, res) => {
   try {
     const { vehicleType } = req.query;
     let query = { 
-      isOccupied: false, 
-      isReserved: false 
+      availableSpaces: { $gt: 0 },
+      isActive: true
     };
     
     if (vehicleType) {
-      query.vehicleType = vehicleType;
+      query.vehicleTypes = vehicleType;
     }
     
     const spots = await ParkingSpot.find(query).sort('spotNumber');
@@ -74,13 +74,13 @@ exports.getParkingSpot = async (req, res) => {
 // @desc    Create new parking spot (Admin only)
 exports.createParkingSpot = async (req, res) => {
   try {
-    const { spotNumber, locationName, price, vehicleType, location, qrCode } = req.body;
+    const { spotNumber, locationName, address, price, vehicleType, location, qrCode } = req.body;
     
     // Validate required fields
-    if (!spotNumber || !locationName || !location || !location.lat || !location.lng) {
+    if (!spotNumber || !locationName || !address || !location || !location.lat || !location.lng) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: spotNumber, locationName, location.lat, location.lng'
+        message: 'Missing required fields: spotNumber, locationName, address, location.lat, location.lng'
       });
     }
     
@@ -108,6 +108,7 @@ exports.createParkingSpot = async (req, res) => {
     const spot = await ParkingSpot.create({
       spotNumber,
       locationName,
+      address: address || locationName, // fallback to locationName if not provided
       price: price || 50,
       vehicleType: vehicleType || 'car',
       location,

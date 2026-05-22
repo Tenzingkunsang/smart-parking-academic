@@ -22,7 +22,8 @@ async function recalculateUserBehavior(userId) {
   const completed = counts.completed || 0;
   const noShows = counts['no-show'] || 0;
   const checkedIn = counts['checked-in'] || 0;
-  const totalSessions = completed + noShows + checkedIn;
+  const overstay = counts.overstay || 0;
+  const totalSessions = completed + noShows + checkedIn + overstay;
   const noShowRate = totalSessions ? noShows / totalSessions : 0;
   const completedRate = totalSessions ? completed / totalSessions : 0;
   const punctualityScore = Math.max(0, Math.min(1, 1 - noShowRate));

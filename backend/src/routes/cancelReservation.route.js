@@ -12,8 +12,10 @@
 const express = require('express');
 const router = express.Router();
 const Reservation = require('../models/Reservation');
-const authMiddleware = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 const axios = require('axios');
+const { releaseReservedSpotAndPromote } = require('../services/reservationLifecycleService');
+
 
 const CANCELLATION_WINDOW_MS = 30 * 60 * 1000;  // 30 minutes
 const FULL_REFUND_WINDOW_MS  = 15 * 60 * 1000;  // 15 minutes
@@ -25,7 +27,7 @@ const getRefundPercent = (createdAt) => {
   return 0;
 };
 
-router.post('/cancel/:id', authMiddleware, async (req, res) => {
+router.post('/cancel/:id', protect, async (req, res) => {
   try {
     const reservation = await Reservation.findById(req.params.id);
 
@@ -34,7 +36,7 @@ router.post('/cancel/:id', authMiddleware, async (req, res) => {
     }
 
     // Ownership check
-    if (reservation.user.toString() !== req.user._id.toString()) {
+    if (reservation.user.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Unauthorized.' });
     }
 
@@ -85,17 +87,17 @@ router.post('/cancel/:id', authMiddleware, async (req, res) => {
 
     // Update reservation
     reservation.status = 'cancelled';
+    reservation.lifecycleStage = 'cancelled';
     reservation.cancelledAt = new Date();
     reservation.refundPercent = refundPercent;
     reservation.refundAmount = refundAmount;
     reservation.refundTransactionId = refundTransactionId;
     await reservation.save();
 
-    // Free up the parking spot
-    await reservation.populate('spot');
-    if (reservation.spot) {
-      reservation.spot.status = 'available';
-      await reservation.spot.save();
+    // Free up the parking spot and promote next waitlist entry
+    await reservation.populate('parkingSpot');
+    if (reservation.parkingSpot) {
+      await releaseReservedSpotAndPromote({ reservation, releaseReason: 'user_cancelled' });
     }
 
     return res.json({

@@ -1,24 +1,22 @@
 /**
- * services/socketService.js
+ * socketService.js — Fixed version
  *
- * Production-grade Socket.IO service.
- * - JWT authentication on every connection
- * - Per-user rooms (users only receive their own events)
- * - Admin room for admin-panel events
- * - Safe getIo() — never throws, logs warning instead
- * - Redis adapter ready (uncomment 3 lines when scaling)
- * - Full event helper methods so the rest of your app
- *   never calls io.emit() directly
+ * Fixes applied:
+ *  #11 — Privacy leak: replaced all io.emit() (broadcast to everyone) with
+ *         targeted emitters. Spot status changes stay broadcast (public info),
+ *         but reservation/user-specific events go only to the relevant user.
+ *
+ * Note: The _emitSpotChange helper in reservationController.js still calls
+ * io.emit() for spot status — that is intentional (parking availability is
+ * public). All user-specific events (check-in timer, reservation status)
+ * now use emitToUser() instead of io.emit().
  */
 
 const jwt = require('jsonwebtoken');
+const logger = require('../config/logger');
 
 let io = null;
 
-/**
- * Allowed frontend origins. Add your production domain here.
- * Falls back to localhost origins for development.
- */
 const getAllowedOrigins = () => {
   const prod = process.env.FRONTEND_URL;
   const devOrigins = [
@@ -29,12 +27,6 @@ const getAllowedOrigins = () => {
   return prod ? [prod, ...devOrigins] : devOrigins;
 };
 
-/**
- * Authenticate a socket connection using the JWT token
- * passed in socket.handshake.auth.token (or as query param).
- *
- * This runs BEFORE the connection event fires.
- */
 const authMiddleware = (socket, next) => {
   try {
     const token =
@@ -48,30 +40,20 @@ const authMiddleware = (socket, next) => {
 
     const secret = process.env.JWT_SECRET;
     if (!secret) {
-      console.error('[Socket] JWT_SECRET is not set.');
+      logger.error('socket_jwt_secret_missing');
       return next(new Error('SERVER_ERROR: Auth not configured.'));
     }
 
     const decoded = jwt.verify(token, secret);
-
-    // Attach user info to socket for use in handlers
     socket.userId = decoded._id || decoded.id || decoded.userId;
-    socket.userRole = decoded.role || 'user';
+    socket.userRole = decoded.role || decoded.userType || 'user';
 
     next();
   } catch (err) {
-    // Expired or invalid token
     return next(new Error(`AUTH_INVALID: ${err.message}`));
   }
 };
 
-/**
- * Initialize Socket.IO on the HTTP server.
- * Call this once in your server entry point (server.js / app.js).
- *
- * @param {import('http').Server} server
- * @returns {import('socket.io').Server}
- */
 const init = (server) => {
   const { Server } = require('socket.io');
 
@@ -86,68 +68,44 @@ const init = (server) => {
     pingInterval: 25_000,
   });
 
-  // ─── Optional: Redis adapter for multi-instance / clustering ────────────────
-  // Uncomment these 3 lines and install: npm install @socket.io/redis-adapter ioredis
-  // const { createClient } = require('ioredis');
-  // const { createAdapter } = require('@socket.io/redis-adapter');
-  // io.adapter(createAdapter(createClient({ host: process.env.REDIS_HOST })));
-  // ────────────────────────────────────────────────────────────────────────────
-
-  // Apply auth middleware to ALL incoming connections
   io.use(authMiddleware);
 
   io.on('connection', (socket) => {
     const { userId, userRole } = socket;
 
-    // ── Join personal room so we can send targeted events ──
     socket.join(`user:${userId}`);
-    console.log(`[Socket] Connected | user: ${userId} | role: ${userRole} | id: ${socket.id}`);
+    logger.info('socket_connected', { userId, role: userRole, socketId: socket.id });
 
-    // ── Admins join a shared admin room ──
     if (userRole === 'admin') {
       socket.join('room:admin');
     }
 
-    // ── Clean disconnect log ──
     socket.on('disconnect', (reason) => {
-      console.log(`[Socket] Disconnected | user: ${userId} | reason: ${reason}`);
+      logger.info('socket_disconnected', { userId, reason });
     });
 
-    // ── Error handler — prevents uncaught exception crashes ──
     socket.on('error', (err) => {
-      console.error(`[Socket] Error on socket ${socket.id}:`, err.message);
+      logger.error('socket_error', { socketId: socket.id, message: err.message });
     });
   });
 
-  console.log(`[Socket] Initialized | allowed origins: ${getAllowedOrigins().join(', ')}`);
+  logger.info('socket_initialized', { allowedOrigins: getAllowedOrigins() });
   return io;
 };
 
-/**
- * Get the initialized io instance.
- * Returns null (with a warning) if init() hasn't been called yet.
- * Never throws — callers can safely do: getIo()?.to(...)?.emit(...)
- *
- * @returns {import('socket.io').Server | null}
- */
 const getIo = () => {
   if (!io) {
-    console.warn('[Socket] getIo() called before init(). Is Socket.IO initialized?');
+    logger.warn('socket_get_io_before_init');
     return null;
   }
   return io;
 };
 
-// ─── Targeted event emitters ────────────────────────────────────────────────
-// Use these throughout your app instead of calling io.emit() directly.
-// They are null-safe — if socket isn't initialized they log and return false.
+// ─── Targeted event emitters ─────────────────────────────────────────────────
 
 /**
- * Emit an event to a specific user only.
- * @param {string} userId
- * @param {string} event
- * @param {object} payload
- * @returns {boolean} whether the event was emitted
+ * Emit to a specific user only.
+ * ─── FIX #11: Use this for any user-specific event instead of io.emit() ────
  */
 const emitToUser = (userId, event, payload) => {
   const socket = getIo();
@@ -157,10 +115,7 @@ const emitToUser = (userId, event, payload) => {
 };
 
 /**
- * Emit an event to all connected admins.
- * @param {string} event
- * @param {object} payload
- * @returns {boolean}
+ * Emit to all connected admins only.
  */
 const emitToAdmins = (event, payload) => {
   const socket = getIo();
@@ -170,11 +125,9 @@ const emitToAdmins = (event, payload) => {
 };
 
 /**
- * Broadcast an event to every connected client.
- * Use sparingly — prefer emitToUser for privacy.
- * @param {string} event
- * @param {object} payload
- * @returns {boolean}
+ * Broadcast to all connected clients.
+ * Use ONLY for truly public data (e.g. parking spot availability).
+ * Never use for user-specific data (bookings, payments, personal info).
  */
 const broadcast = (event, payload) => {
   const socket = getIo();
@@ -183,46 +136,24 @@ const broadcast = (event, payload) => {
   return true;
 };
 
-// ─── Domain-specific event helpers ──────────────────────────────────────────
-// Named wrappers so event names are defined in one place, never hardcoded
-// across the codebase.
+// ─── Domain-specific event helpers ───────────────────────────────────────────
 
-/**
- * Notify a user that their payment was confirmed.
- * @param {string} userId
- * @param {{ bookingId: string, spotNumber: string, amount: number }} data
- */
 const notifyPaymentConfirmed = (userId, data) =>
   emitToUser(userId, 'payment:confirmed', { ...data, timestamp: new Date().toISOString() });
 
-/**
- * Notify a user that their reservation was cancelled + refund info.
- * @param {string} userId
- * @param {{ bookingId: string, refundAmount: number, refundPercent: number }} data
- */
 const notifyReservationCancelled = (userId, data) =>
   emitToUser(userId, 'reservation:cancelled', { ...data, timestamp: new Date().toISOString() });
 
-/**
- * Notify a user that their booking is expiring soon.
- * @param {string} userId
- * @param {{ bookingId: string, spotNumber: string, minutesLeft: number }} data
- */
 const notifyExpiryWarning = (userId, data) =>
   emitToUser(userId, 'reservation:expiring', { ...data, timestamp: new Date().toISOString() });
 
 /**
- * Emit a parking spot status change to all connected clients.
- * Used when admin marks a spot available/occupied.
- * @param {{ spotId: string, spotNumber: string, status: string, locationId: string }} data
+ * Spot status changes are public — any user can see parking availability.
+ * This intentionally uses broadcast().
  */
 const notifySpotStatusChanged = (data) =>
   broadcast('spot:statusChanged', { ...data, timestamp: new Date().toISOString() });
 
-/**
- * Emit a new booking event to the admin room.
- * @param {{ bookingId: string, spotNumber: string, userId: string, amount: number }} data
- */
 const notifyAdminNewBooking = (data) =>
   emitToAdmins('admin:newBooking', { ...data, timestamp: new Date().toISOString() });
 
@@ -232,7 +163,6 @@ module.exports = {
   emitToUser,
   emitToAdmins,
   broadcast,
-  // Domain events
   notifyPaymentConfirmed,
   notifyReservationCancelled,
   notifyExpiryWarning,

@@ -118,6 +118,10 @@ const userSchema = new mongoose.Schema({
   lockUntil: {
     type: Date,
     default: null,
+  },
+  overstayDebt: {
+    type: Number,
+    default: 0,
   }
 }, {
   timestamps: true

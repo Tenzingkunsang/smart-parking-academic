@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import toast from 'react-hot-toast';
-import { Search } from 'lucide-react';
+import { Search, MapPin, Calendar, Clock, CreditCard, ChevronRight, AlertTriangle, ShieldCheck, Ticket, XCircle, CheckCircle2, Loader2, Info, ArrowRight, History } from 'lucide-react';
 import { API_BASE } from '../../config/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Skeleton from '../../components/ui/Skeleton';
-import './MyReservations.css';
 
 const MyReservations = () => {
   const [reservations, setReservations] = useState([]);
@@ -74,39 +73,29 @@ const MyReservations = () => {
   const getStatusConfig = (status) => {
     const configs = {
       'reserved': { 
-        class: 'status-reserved', 
         text: 'Confirmed', 
-        icon: '✓',
-        color: '#2563eb',
-        bg: 'rgba(37, 99, 235, 0.1)'
+        colorClass: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20 shadow-[0_0_15px_rgba(0,242,255,0.1)]',
+        bullet: 'bg-cyan-400'
       },
       'checked-in': { 
-        class: 'status-checked-in', 
         text: 'Active', 
-        icon: '●',
-        color: '#10b981',
-        bg: 'rgba(16, 185, 129, 0.1)'
+        colorClass: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shadow-[0_0_15px_rgba(16,185,129,0.1)] animate-pulse',
+        bullet: 'bg-emerald-400'
       },
       'completed': { 
-        class: 'status-completed', 
         text: 'Completed', 
-        icon: '✓',
-        color: '#6b7280',
-        bg: 'rgba(107, 114, 128, 0.1)'
+        colorClass: 'text-slate-500 bg-white/[0.02] border-white/[0.05]',
+        bullet: 'bg-slate-500'
       },
       'cancelled': { 
-        class: 'status-cancelled', 
         text: 'Cancelled', 
-        icon: '✕',
-        color: '#ef4444',
-        bg: 'rgba(239, 68, 68, 0.1)'
+        colorClass: 'text-red-400 bg-red-400/10 border-red-400/20',
+        bullet: 'bg-red-400'
       },
       'expired': { 
-        class: 'status-expired', 
         text: 'Expired', 
-        icon: '!',
-        color: '#f59e0b',
-        bg: 'rgba(245, 158, 11, 0.1)'
+        colorClass: 'text-amber-400 bg-amber-400/10 border-amber-400/20',
+        bullet: 'bg-amber-400'
       }
     };
     return configs[status] || configs['reserved'];
@@ -147,17 +136,22 @@ const MyReservations = () => {
 
   const handleCancelReservation = async (reservationId) => {
     const result = await Swal.fire({
-      title: 'Cancel this reservation?',
-      html: '<p style="text-align:left;margin:0;font-size:15px;line-height:1.5">This action cannot be undone. Your spot will be released and may be booked by another driver.</p>',
+      title: 'Cancel reservation?',
+      html: '<p style="text-align:left;margin:0;font-size:14px;line-height:1.6;color:#94a3b8;font-family:Inter,sans-serif;">This action will release your spot back to the system. This cannot be undone.</p>',
       icon: 'warning',
       showCancelButton: true,
-      focusCancel: true,
-      confirmButtonText: 'Yes, cancel',
+      confirmButtonText: 'Yes, cancel it',
       cancelButtonText: 'Keep booking',
-      confirmButtonColor: '#6366f1',
-      cancelButtonColor: '#64748b',
-      background: '#1e293b',
-      color: '#f1f5f9',
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: 'rgba(255,255,255,0.05)',
+      background: '#0a0a0a',
+      color: '#ffffff',
+      customClass: {
+        popup: 'rounded-[2rem] border border-white/10 backdrop-blur-xl shadow-2xl',
+        title: 'font-display font-black text-2xl pt-6',
+        confirmButton: 'rounded-xl px-6 py-3 font-bold uppercase tracking-widest text-xs',
+        cancelButton: 'rounded-xl px-6 py-3 font-bold uppercase tracking-widest text-xs'
+      }
     });
 
     if (!result.isConfirmed) return;
@@ -182,229 +176,234 @@ const MyReservations = () => {
       }
     } catch (error) {
       console.error('Error cancelling reservation:', error);
-      toast.error('Failed to cancel reservation. Please try again.');
+      toast.error('Failed to cancel reservation.');
     } finally {
       setCancellingId(null);
     }
   };
 
   const handleCheckOut = (reservation) => {
-    if (window.confirm('Confirm check-out? This will complete your parking session.')) {
-      alert('Check-out initiated. Please visit the parking exit gate.');
-    }
+    Swal.fire({
+       title: 'Check-out sequence?',
+       text: 'Validate final departure protocol.',
+       icon: 'info',
+       showCancelButton: true,
+       confirmButtonText: 'Confirm Exit',
+       background: '#0a0a0a',
+       color: '#ffffff',
+       confirmButtonColor: '#00F2FF',
+       customClass: { popup: 'rounded-[2rem] border border-white/10' }
+    });
   };
 
   if (loading) {
     return (
-      <div className="reservations-loading">
-        <Card style={{ width: 'min(860px, 94vw)', padding: 20 }}>
-          <Skeleton height={24} width="40%" />
-          <Skeleton height={16} width="70%" style={{ marginTop: 12 }} />
-          <Skeleton height={120} width="100%" style={{ marginTop: 16 }} />
-        </Card>
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-8 pt-32 space-y-8">
+        <div className="w-full max-w-4xl space-y-6">
+          <div className="h-12 w-48 bg-white/5 rounded-xl animate-pulse" />
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="h-64 bg-white/5 rounded-3xl animate-pulse" />
+            <div className="h-64 bg-white/5 rounded-3xl animate-pulse" />
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="reservations-error">
-        <div className="error-icon">⚠️</div>
-        <h3>Unable to Load Reservations</h3>
-        <p>{error}</p>
-        <Button onClick={fetchReservations} variant="ghost">Try Again</Button>
+      <div className="min-h-screen flex flex-col items-center justify-center p-8 pt-32 text-center space-y-8">
+        <div className="w-20 h-20 rounded-[2.5rem] bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center mx-auto">
+          <AlertTriangle size={40} />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-3xl font-black font-display tracking-tight text-white uppercase">Sync Failed</h3>
+          <p className="text-slate-500 font-medium max-w-xs mx-auto leading-relaxed">{error}</p>
+        </div>
+        <Button onClick={fetchReservations}>Retry Connection</Button>
       </div>
     );
   }
 
   return (
-    <div className="reservations-page">
-      {/* Page Header - Full Width */}
-      <div className="page-header">
-        <div className="header-content">
-          <div>
-            <h1>My Reservations</h1>
-            <p>View and manage your parking bookings</p>
-          </div>
-          <Button className="book-new-btn" onClick={() => navigate('/parking')}>
-            + New Booking
-          </Button>
+    <div className="min-h-screen pt-32 pb-24 px-6 max-w-7xl mx-auto space-y-12 animate-in fade-in duration-700">
+      
+      <div className="fixed top-0 right-0 w-[400px] h-[400px] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+
+      {/* Page Header */}
+      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-10 border-b border-white/[0.06]">
+        <div className="space-y-2">
+           <div className="flex items-center gap-2 text-cyan-400 mb-1">
+              <History size={14} className="fill-current" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">Telemetry Logs</span>
+           </div>
+           <h1 className="text-5xl md:text-6xl font-black font-display tracking-tight text-white uppercase">My Bookings</h1>
+           <p className="text-slate-500 font-medium italic">Monitoring active permits and historical temporal records.</p>
         </div>
-      </div>
+        <Button 
+          onClick={() => navigate('/parking')}
+          className="group flex items-center gap-3 !px-8 !py-4"
+        >
+          Locate Capacity <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+        </Button>
+      </section>
 
       {/* Info Banner */}
-      <div className="info-banner">
-        <div className="banner-container">
-          <div className="banner-icon">ℹ️</div>
-          <div className="banner-text">
-            <strong>Important:</strong> If you don't check in within 15 minutes of your reservation time, 
-            your spot may be reallocated to other users.
-          </div>
+      <Card className="!p-6 border-cyan-500/20 bg-cyan-500/[0.02] flex items-start gap-6">
+        <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center shrink-0 text-cyan-400 shadow-[0_0_20px_rgba(0,242,255,0.1)]">
+          <Info size={24} />
         </div>
-      </div>
+        <div className="space-y-1">
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Validation Protocol</span>
+          <p className="text-sm text-slate-400 font-medium leading-relaxed">
+            Arrival verification must occur within <span className="text-cyan-400 font-bold">15 minutes</span> of scheduled epoch. 
+            Scanning the temporal QR at the gate is mandatory to activate grid allocation.
+          </p>
+        </div>
+      </Card>
 
-      {/* Main Content Container */}
-      <div className="reservations-container">
-        {waitlistEntries.length > 0 && (
-          <Card className="reservation-card" style={{ marginBottom: '1rem' }}>
-            <div className="card-header"><div className="spot-info"><h3>My Waitlist</h3><div className="spot-location">Pending auto-promotion</div></div></div>
-            <div className="card-body">
+      {/* Waitlist */}
+      {waitlistEntries.length > 0 && (
+        <section className="space-y-6">
+           <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Active Waitlists</h2>
+           </div>
+           <div className="grid gap-4">
               {waitlistEntries.map((entry) => (
-                <div key={entry._id} className="details-grid" style={{ marginBottom: '0.75rem' }}>
-                  <div className="detail-item"><label>Location</label><span>{entry.parkingSpot?.locationName}</span></div>
-                  <div className="detail-item"><label>Spot</label><span>#{entry.parkingSpot?.spotNumber}</span></div>
-                  <div className="detail-item"><label>Arrival</label><span>{new Date(entry.scheduledArrival).toLocaleString()}</span></div>
-                  <div className="detail-item"><label>Duration</label><span>{entry.duration} mins</span></div>
-                  <Button className="btn-cancel" variant="danger" onClick={() => handleLeaveWaitlist(entry._id)}>Leave waitlist</Button>
-                </div>
+                <Card key={entry._id} className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 !p-6 hover:bg-white/[0.03]">
+                   <div className="grid grid-cols-2 md:grid-cols-4 gap-8 flex-1">
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-1">Zone</span>
+                        <span className="text-sm font-bold text-white block">{entry.parkingSpot?.locationName}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-1">Node</span>
+                        <span className="text-sm font-black text-cyan-400 block font-display">#{entry.parkingSpot?.spotNumber}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-1">Scheduled</span>
+                        <span className="text-sm font-bold text-white block">{new Date(entry.scheduledArrival).toLocaleDateString()}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-1">Link</span>
+                        <span className="text-sm font-bold text-slate-400 block">{entry.duration}m Parking</span>
+                      </div>
+                   </div>
+                   <Button variant="danger" onClick={() => handleLeaveWaitlist(entry._id)} className="!py-2 !px-5 !text-[10px]">Leave List</Button>
+                </Card>
               ))}
-            </div>
-          </Card>
-        )}
+           </div>
+        </section>
+      )}
 
+      {/* Reservations Grid */}
+      <section className="space-y-8">
         {reservations.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon empty-icon-svg" aria-hidden>
-              <Search size={48} strokeWidth={1.25} />
+          <Card className="py-24 text-center space-y-6 border-dashed bg-transparent">
+            <div className="w-20 h-20 rounded-[2rem] bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-slate-800">
+              <Search size={32} />
             </div>
-            <h3>No reservations yet</h3>
-            <p>Nothing to show here. Search for a zone and book a spot — your sessions will appear in this list.</p>
-            <button type="button" className="find-parking-btn" onClick={() => navigate('/parking')}>
-              Find parking
-            </button>
-          </div>
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black font-display text-white uppercase tracking-tight">Zero Permits Found</h3>
+              <p className="text-slate-500 font-medium max-w-xs mx-auto">Your allocation database is currently empty. Initialize a search to begin.</p>
+            </div>
+            <Button variant="secondary" onClick={() => navigate('/parking')}>Browse Grid</Button>
+          </Card>
         ) : (
-          <div className="reservations-grid">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {reservations.map((reservation) => {
-              const statusConfig = getStatusConfig(reservation.status);
-              
+              const config = getStatusConfig(reservation.status);
               return (
-                <div key={reservation._id} className="reservation-card">
-                  {/* Card Header */}
-                  <div className="card-header">
-                    <div className="spot-info">
-                      <h3>{reservation.parkingSpot?.locationName || 'Parking Spot'}</h3>
-                      <div className="spot-location">
-                        📍 {reservation.parkingSpot?.location?.address || 'Kathmandu, Nepal'}
+                <Card key={reservation._id} className="!p-10 flex flex-col justify-between gap-10 group relative overflow-hidden">
+                   <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/[0.02] rounded-full blur-3xl group-hover:bg-cyan-500/[0.05] transition-colors" />
+                   
+                   <div className="flex justify-between items-start relative z-10">
+                      <div className="space-y-2">
+                         <div className="flex items-center gap-2 text-cyan-400">
+                            <MapPin size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-widest leading-none">Identified Node</span>
+                         </div>
+                         <h3 className="text-3xl font-black font-display text-white group-hover:text-cyan-400 transition-colors leading-tight">
+                            {reservation.parkingSpot?.locationName}
+                         </h3>
+                         <p className="text-sm text-slate-500 font-medium truncate max-w-[280px]">
+                            {reservation.parkingSpot?.location?.address || 'Standard Sector'}
+                         </p>
                       </div>
-                    </div>
-                    <div 
-                      className="status-badge"
-                      style={{
-                        background: statusConfig.bg,
-                        color: statusConfig.color
-                      }}
-                    >
-                      <span className="status-icon">{statusConfig.icon}</span>
-                      <span>{statusConfig.text}</span>
-                    </div>
-                  </div>
+                      
+                      <div className={`px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${config.colorClass}`}>
+                         <div className={`w-2 h-2 rounded-full ${config.bullet}`} />
+                         {config.text}
+                      </div>
+                   </div>
 
-                  {/* Card Body */}
-                  <div className="card-body">
-                    <div className="details-grid">
-                      <div className="detail-item">
-                        <label>Spot Number</label>
-                        <span>#{reservation.parkingSpot?.spotNumber || 'N/A'}</span>
+                   <div className="grid grid-cols-2 gap-8 border-t border-white/5 pt-8 relative z-10">
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-1">Unit ID</span>
+                        <span className="text-2xl font-display font-black text-white tracking-tighter">#{reservation.parkingSpot?.spotNumber}</span>
                       </div>
-                      <div className="detail-item">
-                        <label>Vehicle Type</label>
-                        <span>
-                          {reservation.parkingSpot?.vehicleType === 'car' ? '🚗 Car' : '🛵 Bike'}
-                        </span>
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-1">Fee Structure</span>
+                        <span className="text-2xl font-display font-black text-cyan-400 tracking-tighter">Rs. {reservation.totalAmount}</span>
                       </div>
-                      <div className="detail-item">
-                        <label>Duration</label>
-                        <span>{reservation.duration} mins</span>
-                      </div>
-                      <div className="detail-item">
-                        <label>Scheduled Date</label>
-                        <span>{formatDate(reservation.scheduledArrival || reservation.reservationTime)}</span>
-                      </div>
-                      <div className="detail-item">
-                        <label>Scheduled Time</label>
-                        <span>{formatTime(reservation.scheduledArrival || reservation.reservationTime)}</span>
-                      </div>
-                      <div className="detail-item">
-                        <label>Total Amount</label>
-                        <span className="amount">Rs. {reservation.finalAmount || reservation.totalAmount || 0}</span>
-                      </div>
-                      <div className="detail-item">
-                        <label>Payment</label>
-                        <span>
-                          {reservation.paymentMethod === 'cash' ? 'Pay on Spot' : 'Khalti'} · {reservation.paymentStatus || 'pending'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {reservation.checkInTime && (
-                      <div className="checkin-info">
-                        <div className="checkin-icon">✓</div>
-                        <div>
-                          <strong>Checked in</strong> at {formatTime(reservation.checkInTime)}
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-1">Epoch window</span>
+                        <div className="text-xs font-bold text-slate-300 leading-tight">
+                           <span className="block mb-1">{formatDate(reservation.scheduledArrival || reservation.reservationTime)}</span>
+                           <span className="text-cyan-400">{formatTime(reservation.scheduledArrival || reservation.reservationTime)}</span>
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Card Footer */}
-                  <div className="card-footer">
-                    {reservation.status === 'reserved' && (
-                      <>
-                        <button 
-                          className="btn-view-ticket"
-                          onClick={() => handleViewTicket(reservation)}
-                        >
-                          View Ticket
-                        </button>
-                        <button 
-                          className="btn-cancel"
-                          onClick={() => handleCancelReservation(reservation._id)}
-                          disabled={cancellingId === reservation._id}
-                        >
-                          {cancellingId === reservation._id ? 'Cancelling...' : 'Cancel'}
-                        </button>
-                      </>
-                    )}
-                    
-                    {reservation.status === 'checked-in' && (
-                      <>
-                        <button 
-                          className="btn-view-ticket"
-                          onClick={() => handleViewTicket(reservation)}
-                        >
-                          View Ticket
-                        </button>
-                        <button 
-                          className="btn-checkout"
-                          onClick={() => handleCheckOut(reservation)}
-                        >
-                          Check Out
-                        </button>
-                      </>
-                    )}
-                    
-                    {reservation.status === 'completed' && (
-                      <button 
-                        className="btn-view-receipt"
-                        onClick={() => handleViewTicket(reservation)}
-                      >
-                        View Receipt
-                      </button>
-                    )}
-                    
-                    {(reservation.status === 'cancelled' || reservation.status === 'expired') && (
-                      <div className="inactive-message">
-                        {reservation.status === 'cancelled' ? 'This booking was cancelled' : 'This booking has expired'}
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mb-1">Method / Status</span>
+                        <div className="flex flex-col gap-1.5">
+                           <span className="text-[10px] font-bold text-white uppercase tracking-widest">{reservation.paymentMethod === 'cash' ? 'Offline' : 'Online'}</span>
+                           <span className={`inline-block w-fit px-2 py-0.5 rounded text-[8px] font-black uppercase ${reservation.paymentStatus === 'completed' || reservation.paymentStatus === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                              {reservation.paymentStatus || 'pending'}
+                           </span>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                </div>
+                   </div>
+
+                   <div className="flex gap-4 pt-4 relative z-10">
+                      {reservation.status === 'reserved' && (
+                        <>
+                           <Button onClick={() => handleViewTicket(reservation)} className="flex-1">View Ticket</Button>
+                           <button 
+                             onClick={() => handleCancelReservation(reservation._id)}
+                             disabled={cancellingId === reservation._id}
+                             className="w-14 h-14 rounded-2xl bg-red-500/5 text-red-500 border border-red-500/10 flex items-center justify-center hover:bg-red-500/10 transition-all"
+                           >
+                              {cancellingId === reservation._id ? <Loader2 className="animate-spin" size={20} /> : <XCircle size={22} />}
+                           </button>
+                        </>
+                      )}
+                      
+                      {reservation.status === 'checked-in' && (
+                        <>
+                           <Button variant="secondary" onClick={() => handleViewTicket(reservation)} className="flex-1">Active Ticket</Button>
+                           <Button onClick={() => handleCheckOut(reservation)} className="flex-[2] !bg-emerald-500 hover:!bg-emerald-600 shadow-emerald-500/20 animate-pulse">Terminate Session</Button>
+                        </>
+                      )}
+                      
+                      {reservation.status === 'completed' && (
+                        <Button variant="secondary" onClick={() => handleViewTicket(reservation)} className="w-full flex items-center justify-center gap-3 group">
+                           View Receipt <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                        </Button>
+                      )}
+
+                      {(reservation.status === 'cancelled' || reservation.status === 'expired') && (
+                        <div className="w-full h-14 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.3em] text-slate-700">
+                           <XCircle size={16} /> {reservation.status === 'cancelled' ? 'Permit Revoked' : 'Window Expired'}
+                        </div>
+                      )}
+                   </div>
+                </Card>
               );
             })}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 };

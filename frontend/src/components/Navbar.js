@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, CarFront, Moon, Sun } from 'lucide-react';
+import { Bell, LogOut, CarFront, Moon, Sun, Menu, X, User, LayoutDashboard, MapPin, History, Shield } from 'lucide-react';
 import { API_BASE, getAuthToken } from '../config/api';
 import { useThemeMode } from '../theme/ThemeProvider';
-import './Navbar.css';
+import Button from './ui/Button';
 
 const Navbar = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -11,17 +11,14 @@ const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [preview, setPreview] = useState([]);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { theme, toggleTheme } = useThemeMode();
   const location = useLocation();
   const navigate = useNavigate();
-  const dropdownRef = useRef(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
-
     setIsLoggedIn(!!token);
     if (userData) {
       const parsedUser = JSON.parse(userData);
@@ -31,270 +28,136 @@ const Navbar = () => {
   }, [location]);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const handleLogout = () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (refreshToken) {
-      fetch(`${API_BASE}/auth/logout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      }).catch(() => {});
-    }
     localStorage.removeItem('token');
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     setIsLoggedIn(false);
     setUser(null);
-    setUnreadCount(0);
-    setPreview([]);
+    setMobileMenuOpen(false);
     navigate('/');
   };
 
-  const refreshNotifications = async () => {
-    const token = getAuthToken();
-    if (!token) return;
-
-    try {
-      const res = await fetch(`${API_BASE}/notifications/unread/count`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) setUnreadCount(data.data?.unreadCount || 0);
-    } catch (e) {
-      // ignore
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/notifications?limit=8&skip=0`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) setPreview(data.data?.notifications || []);
-    } catch (e) {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    if (!isLoggedIn) {
-      setUnreadCount(0);
-      setPreview([]);
-      return;
-    }
-    refreshNotifications();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, location.pathname]);
-
-  useEffect(() => {
-    if (!isLoggedIn || !dropdownOpen) return;
-    refreshNotifications();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dropdownOpen]);
-
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    const tick = () => {
-      const token = getAuthToken();
-      if (!token) return;
-      fetch(`${API_BASE}/notifications/unread/count`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.success) setUnreadCount(data.data?.unreadCount || 0);
-        })
-        .catch(() => {});
-    };
-    const id = setInterval(tick, 45000);
-    return () => clearInterval(id);
-  }, [isLoggedIn]);
-
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const handleClickOutside = (e) => {
-      if (!dropdownRef.current) return;
-      if (!dropdownRef.current.contains(e.target)) setDropdownOpen(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [dropdownOpen]);
-
-  const markRead = async (id) => {
-    try {
-      const token = getAuthToken();
-      if (!token) return;
-
-      await fetch(`${API_BASE}/notifications/${id}/read`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
-
-      setPreview((prev) => prev.map((n) => (n._id === id ? { ...n, read: true } : n)));
-      setUnreadCount((c) => Math.max(0, c - 1));
-    } catch (e) {
-      // ignore
-    }
-  };
+  const navLinks = [
+    { name: 'Dashboard', path: '/', icon: LayoutDashboard },
+    { name: 'Parking', path: '/parking', icon: MapPin },
+    ...(isLoggedIn ? [{ name: 'Reservations', path: '/reservations', icon: History }] : []),
+  ];
 
   return (
-    <nav className={`navbar ${isScrolled ? 'scrolled' : ''}`} role="navigation" aria-label="Main">
-      <div className="nav-container">
-        <Link to="/" className="nav-logo">
-          <div className="logo-icon" aria-hidden>
-            <CarFront size={22} strokeWidth={2} />
+    <nav 
+      className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${
+        isScrolled || mobileMenuOpen
+          ? 'bg-[#050505]/80 backdrop-blur-xl border-b border-white/10 py-4' 
+          : 'bg-transparent py-6'
+      }`}
+    >
+      <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
+        
+        {/* Logo */}
+        <Link to="/" className="flex items-center gap-3 group z-[110]">
+          <div className="w-10 h-10 rounded-xl bg-cyan-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-all">
+            <CarFront size={22} strokeWidth={2.5} />
           </div>
-          <span className="logo-text">SmartPark</span>
+          <span className="font-display font-black text-2xl tracking-tighter text-white">
+            SmartPark
+          </span>
         </Link>
 
-        <div className="nav-links">
-          <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}>
-            Dashboard
-          </Link>
-          <Link
-            to="/parking"
-            className={`nav-link ${location.pathname === '/parking' ? 'active' : ''}`}
-          >
-            Parking
-          </Link>
-          {isLoggedIn && (
-            <Link
-              to="/reservations"
-              className={`nav-link ${location.pathname === '/reservations' ? 'active' : ''}`}
+        {/* Desktop Menu */}
+        <div className="hidden md:flex items-center gap-8">
+          {navLinks.map((link) => (
+            <Link 
+              key={link.path}
+              to={link.path} 
+              className={`text-sm font-bold tracking-tight transition-colors ${
+                location.pathname === link.path ? 'text-cyan-400' : 'text-slate-400 hover:text-white'
+              }`}
             >
-              Reservations
+              {link.name}
             </Link>
-          )}
-          {isAdmin && isLoggedIn && (
-            <>
-              <Link
-                to="/admin"
-                className={`nav-link admin-link ${location.pathname === '/admin' ? 'active' : ''}`}
-              >
-                Admin
-              </Link>
-              <Link
-                to="/admin/spots"
-                className={`nav-link admin-link ${location.pathname === '/admin/spots' ? 'active' : ''}`}
-              >
-                Spots
-              </Link>
-              <Link
-                to="/admin/scan"
-                className={`nav-link admin-link ${location.pathname === '/admin/scan' ? 'active' : ''}`}
-              >
-                Scanner
-              </Link>
-            </>
+          ))}
+          
+          {isAdmin && (
+            <Link to="/admin" className="text-xs font-black uppercase tracking-widest text-slate-500 hover:text-cyan-400 border border-white/10 px-3 py-1 rounded-lg transition-all">
+              Admin
+            </Link>
           )}
         </div>
 
-        <div className="nav-actions">
+        {/* Actions */}
+        <div className="flex items-center gap-4 z-[110]">
           {isLoggedIn ? (
-            <div className="nav-actions-inner">
-              <div className="notif-dropdown-wrap" ref={dropdownRef}>
-                <button
-                  type="button"
-                  className="notif-bell-btn"
-                  aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
-                  aria-expanded={dropdownOpen}
-                  aria-haspopup="true"
-                  onClick={() => setDropdownOpen((v) => !v)}
-                >
-                  <Bell size={20} strokeWidth={2} />
-                  {unreadCount > 0 && (
-                    <span className="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
-                  )}
-                </button>
-
-                {dropdownOpen && (
-                  <div className="notif-dropdown">
-                    <div className="notif-dropdown-header">
-                      <span>Notifications</span>
-                      {unreadCount > 0 && (
-                        <span className="notif-header-pill">{unreadCount} unread</span>
-                      )}
-                    </div>
-
-                    {preview.length === 0 ? (
-                      <div className="notif-empty">No notifications yet.</div>
-                    ) : (
-                      <div className="notif-items">
-                        {preview.map((n) => (
-                          <button
-                            key={n._id}
-                            type="button"
-                            className={`notif-item ${n.read ? 'read' : 'unread'}`}
-                            onClick={async () => {
-                              if (!n.read) await markRead(n._id);
-                              setDropdownOpen(false);
-                              navigate('/notifications');
-                            }}
-                          >
-                            <div className="notif-item-title">{n.title}</div>
-                            <div className="notif-item-message">{n.message}</div>
-                            <div className="notif-item-time">
-                              {new Date(n.createdAt).toLocaleString()}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="notif-dropdown-footer">
-                      <button
-                        type="button"
-                        className="notif-view-all-btn"
-                        onClick={() => {
-                          setDropdownOpen(false);
-                          navigate('/notifications');
-                        }}
-                      >
-                        View all
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <Link
-                to="/profile"
-                className="nav-profile-btn"
-                aria-label="Profile"
-                title="Profile"
-              >
-                <span className="nav-avatar-fallback">
-                  {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                </span>
+            <div className="flex items-center gap-4">
+              <Link to="/notifications" className="relative p-2 text-slate-400 hover:text-white transition-colors">
+                <Bell size={20} />
+                {unreadCount > 0 && <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />}
+              </Link>
+              
+              <Link to="/profile" className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-cyan-400 font-bold hover:border-cyan-400/50 transition-all">
+                {user?.name?.charAt(0).toUpperCase()}
               </Link>
 
-              <button type="button" className="logout-btn" onClick={handleLogout} aria-label="Sign out">
-                <LogOut size={18} strokeWidth={2} aria-hidden />
-                <span>Sign out</span>
-              </button>
-              <button type="button" className="logout-btn" onClick={toggleTheme} aria-label="Toggle theme">
-                {theme === 'dark' ? <Sun size={18} strokeWidth={2} aria-hidden /> : <Moon size={18} strokeWidth={2} aria-hidden />}
+              <button onClick={handleLogout} className="hidden lg:flex items-center gap-2 text-xs font-black uppercase tracking-widest text-red-400 hover:text-red-300 transition-colors">
+                <LogOut size={16} />
+                Logout
               </button>
             </div>
           ) : (
-            <div className="auth-buttons">
-              <Link to="/login" className="login-btn">
-                Sign in
-              </Link>
-              <Link to="/register" className="register-btn">
-                Get started
-              </Link>
+            <div className="hidden md:flex items-center gap-4">
+              <Link to="/login" className="text-sm font-bold text-slate-400 hover:text-white transition-colors">Sign in</Link>
+              <Button onClick={() => navigate('/register')} className="!px-5 !py-2.5 !text-[11px]">Get Started</Button>
             </div>
           )}
+
+          {/* Mobile Toggle */}
+          <button 
+            className="md:hidden p-2 text-white"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
       </div>
+
+      {/* Mobile Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 bg-[#050505] pt-24 px-6 space-y-8 animate-in fade-in slide-in-from-top-4">
+          <div className="grid gap-6">
+            {navLinks.map((link) => (
+              <Link
+                key={link.path}
+                to={link.path}
+                className="flex items-center gap-4 text-2xl font-display font-bold text-white"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <link.icon size={24} className="text-cyan-400" />
+                {link.name}
+              </Link>
+            ))}
+          </div>
+          
+          <div className="pt-8 border-t border-white/10">
+            {isLoggedIn ? (
+              <button onClick={handleLogout} className="w-full text-left text-2xl font-display font-bold text-red-400 flex items-center gap-4">
+                <LogOut size={24} />
+                Sign Out
+              </button>
+            ) : (
+              <div className="grid gap-4">
+                <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="text-2xl font-display font-bold text-white">Sign In</Link>
+                <Button onClick={() => { setMobileMenuOpen(false); navigate('/register'); }} className="w-full">Get Started</Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </nav>
   );
 };

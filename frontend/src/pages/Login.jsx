@@ -1,288 +1,131 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
+import { AlertCircle, CheckCircle2, Loader2, ArrowLeft, Mail, ShieldCheck, Zap } from 'lucide-react';
 import { API_BASE } from '../config/api';
 import AuthLayout from '../components/AuthLayout';
+import Button from '../components/ui/Button';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [verificationRequired, setVerificationRequired] = useState(false);
-  const [pendingEmail, setPendingEmail] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [testCode, setTestCode] = useState(null);
-  const [verifyLoading, setVerifyLoading] = useState(false);
-
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     try {
       const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-
       const data = await response.json();
-
       if (data.success) {
         localStorage.setItem('token', data.token);
         localStorage.setItem('authToken', data.token);
-        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
-
-        if (data.user.userType === 'admin') {
-          window.location.href = '/admin';
-        } else {
-          window.location.href = '/';
-        }
+        window.location.href = data.user.userType === 'admin' ? '/admin' : '/';
       } else {
-        setError(data.message || 'Login failed');
+        setError(data.message || 'Identity verification failed');
       }
     } catch (err) {
-      setError('Cannot connect to server. Make sure backend is running on port 5001');
+      setError('Grid Link Error: Network unstable');
     } finally {
       setLoading(false);
     }
   };
 
-  const finishLogin = (data) => {
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('authToken', data.token);
-    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-    localStorage.setItem('user', JSON.stringify(data.user));
-
-    if (data.user.userType === 'admin') navigate('/admin');
-    else navigate('/');
-  };
-
   const handleGoogleSuccess = async (credentialResponse) => {
+    setGoogleLoading(true);
     try {
-      setGoogleLoading(true);
-      setError('');
-
       const response = await fetch(`${API_BASE}/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: credentialResponse.credential })
       });
-
       const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        setError(data.message || 'Google login failed');
-        return;
+      if (data.success) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        navigate('/');
       }
-
-      if (data.verificationRequired) {
-        setVerificationRequired(true);
-        setPendingEmail(data.email);
-        setVerificationCode('');
-        setTestCode(data.code || null);
-        return;
-      }
-
-      if (data.token && data.user) {
-        finishLogin(data);
-      } else {
-        setError('Google login failed: missing token');
-      }
-    } catch (err) {
-      setError('Google login failed. Please try again.');
+    } catch {
+      setError('OAuth Synchronization Failed');
     } finally {
       setGoogleLoading(false);
     }
   };
 
-  const handleGoogleError = () => {
-    setError('Google login failed. Please try again.');
-  };
-
-  const handleResendCode = async () => {
-    try {
-      setError('');
-      setVerifyLoading(true);
-
-      const response = await fetch(`${API_BASE}/auth/google/send-verification-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: pendingEmail })
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        setError(data.message || 'Failed to resend code');
-        return;
-      }
-
-      setTestCode(data.code || null);
-    } catch (e) {
-      setError('Failed to resend code.');
-    } finally {
-      setVerifyLoading(false);
-    }
-  };
-
-  const handleVerifyCode = async () => {
-    try {
-      setError('');
-      setVerifyLoading(true);
-
-      const response = await fetch(`${API_BASE}/auth/google/verify-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: pendingEmail, code: verificationCode })
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        setError(data.message || 'Invalid verification code');
-        return;
-      }
-
-      finishLogin(data);
-    } catch (e) {
-      setError('Verification failed. Please try again.');
-    } finally {
-      setVerifyLoading(false);
-    }
-  };
-
   return (
-    <AuthLayout title="Welcome back" subtitle="Sign in to manage bookings, payments, and tickets.">
-      {error ? <div className="error-message">{error}</div> : null}
-
-      {verificationRequired ? (
-        <div className="auth-verify-actions">
-          <h3 className="subtitle" style={{ marginBottom: '0.35rem' }}>
-            Verify your email
-          </h3>
-          <p style={{ textAlign: 'center', color: 'var(--gray-medium)', fontSize: '0.92rem', marginBottom: '1rem' }}>
-            Enter the 6-digit code sent to{' '}
-            <span style={{ color: 'var(--gray-light)', fontWeight: 600 }}>{pendingEmail}</span>
-          </p>
-
-          {testCode ? (
-            <div className="dev-code-hint" role="status">
-              test code: <strong>{testCode}</strong>
-            </div>
-          ) : null}
-
-          <div className="form-group">
-            <label htmlFor="verify-code">Verification code</label>
-            <input
-              id="verify-code"
-              value={verificationCode}
-              onChange={(e) => setVerificationCode(e.target.value)}
-              placeholder="123456"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-            />
-          </div>
-
-          <button
-            type="button"
-            disabled={verifyLoading || !verificationCode}
-            onClick={handleVerifyCode}
-          >
-            {verifyLoading ? 'Verifying…' : 'Verify & continue'}
-          </button>
-
-          <button
-            type="button"
-            className="btn-secondary-outline"
-            disabled={verifyLoading || !pendingEmail}
-            onClick={handleResendCode}
-          >
-            {verifyLoading ? 'Please wait…' : 'Resend code'}
-          </button>
-
-          <button
-            type="button"
-            className="btn-ghost-link"
-            onClick={() => {
-              setVerificationRequired(false);
-              setPendingEmail('');
-              setVerificationCode('');
-              setTestCode(null);
-              setError('');
-            }}
-          >
-            Back to email login
-          </button>
+    <AuthLayout title="Identity Link" subtitle="Establish a secure session to manage grid allocations.">
+      
+      {error && (
+        <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-start gap-3 text-red-400 text-xs font-bold uppercase tracking-widest">
+          <AlertCircle className="shrink-0" size={16} />
+          <span>{error}</span>
         </div>
-      ) : (
-        <>
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="login-email">Email</label>
-              <input
-                id="login-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                placeholder="@gmail.com"
-              />
-            </div>
+      )}
 
-            <div className="form-group">
-              <label htmlFor="login-password">Password</label>
-              <input
-                id="login-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                placeholder="••••••••"
-              />
-            </div>
-
-            <button type="submit" disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
-
-          <p className="auth-divider">or</p>
-          <div className="auth-google-wrap">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-              text="signin_with"
-              size="large"
-              theme="filled_black"
-              shape="pill"
-              useOneTap={false}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-2">
+          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 ml-1">Network Identity</label>
+          <div className="relative group">
+            <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-cyan-400 transition-colors" size={18} />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="user@grid.park"
+              className="w-full h-14 bg-white/[0.03] border border-white/[0.08] rounded-2xl pl-14 pr-6 text-sm font-bold text-white focus:outline-none focus:border-cyan-400 focus:bg-white/[0.05] transition-all"
             />
           </div>
-          {googleLoading ? (
-            <p style={{ textAlign: 'center', color: 'var(--gray-medium)', fontSize: '0.85rem', marginTop: '0.65rem' }}>
-              Processing Google sign-in…
-            </p>
-          ) : null}
-          <p style={{ textAlign: 'center', color: 'var(--gray-dark)', fontSize: '0.78rem', marginTop: '0.65rem' }}>
-            Google sign-in may require a one-time email code for security.
-          </p>
+        </div>
 
-          <div className="auth-links-row">
-            <Link to="/forgot-password">Forgot password?</Link>
-            <span style={{ margin: '0 0.35rem', color: 'var(--gray-dark)' }}>·</span>
-            <span>
-              No account? <Link to="/register">Create one</Link>
-            </span>
-          </div>
-        </>
-      )}
+        <div className="space-y-2">
+           <div className="flex justify-between items-center px-1">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Access Key</label>
+              <Link to="/forgot-password" size="sm" className="text-[9px] font-black text-slate-500 hover:text-cyan-400 uppercase tracking-widest transition-colors">Lost Key?</Link>
+           </div>
+           <input
+             type="password"
+             value={password}
+             onChange={(e) => setPassword(e.target.value)}
+             required
+             placeholder="••••••••"
+             className="w-full h-14 bg-white/[0.03] border border-white/[0.08] rounded-2xl px-6 text-sm font-bold text-white focus:outline-none focus:border-cyan-400 focus:bg-white/[0.05] transition-all"
+           />
+        </div>
+
+        <Button type="submit" disabled={loading} className="w-full !py-4 shadow-2xl flex items-center justify-center gap-3">
+          {loading ? <Loader2 className="animate-spin" size={20} /> : 'Initialize Session'}
+        </Button>
+      </form>
+
+      <div className="my-10 relative">
+        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/5"></div></div>
+        <div className="relative flex justify-center text-[9px] uppercase font-black tracking-[0.3em]"><span className="bg-[#0b0b0b] px-4 text-slate-700">OAuth Link</span></div>
+      </div>
+
+      <div className="flex justify-center">
+        <GoogleLogin
+          onSuccess={handleGoogleSuccess}
+          onError={() => setError('OAuth Failure')}
+          theme="filled_black"
+          shape="pill"
+        />
+      </div>
+
+      <div className="mt-10 pt-8 border-t border-white/5 text-center">
+         <p className="text-xs text-slate-600 font-medium">
+           No grid identity? <Link to="/register" className="text-white font-black hover:text-cyan-400 transition-colors underline decoration-cyan-400/30 underline-offset-4 ml-1">Create Account</Link>
+         </p>
+      </div>
     </AuthLayout>
   );
 };

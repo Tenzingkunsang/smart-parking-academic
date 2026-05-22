@@ -1,0 +1,50 @@
+.qr-scanner-page {
+  padding-top: 8rem;
+  padding-bottom: 4rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.scanner-frame {
+  width: 100%;
+  max-width: 400px;
+  aspect-ratio: 1;
+  background: black;
+  border-radius: 2.5rem;
+  border: 1px solid var(--border-glass);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+}
+
+.scanner-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 15px var(--accent-cyan);
+  animation: scan-move 3s linear infinite;
+  z-index: 10;
+}
+
+@keyframes scan-move {
+  0% { top: 0; opacity: 0; }
+  5% { opacity: 1; }
+  95% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+.result-card {
+  margin-top: 2.5rem;
+  width: 100%;
+  max-width: 440px;
+  padding: 2.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: 2.5rem;
+  text-align: center;
+  backdrop-filter: blur(20px);
+}

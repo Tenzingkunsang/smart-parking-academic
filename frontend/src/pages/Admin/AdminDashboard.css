@@ -1,112 +1,68 @@
-.admin-container {
-  min-height: 100vh;
-  background: var(--gray-950);
-  padding: 2rem;
-}
-
-.admin-header {
-  margin-bottom: 2rem;
-}
-
-.admin-header h1 {
-  font-size: 2rem;
-  font-weight: bold;
-  color: white;
-  margin-bottom: 0.5rem;
-}
-
-.admin-header p {
-  color: var(--gray-400);
-}
-
-.stats-grid {
+.admin-stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  margin-bottom: 4rem;
 }
 
-.stat-card {
-  background: var(--gray-900);
-  border-radius: 1rem;
+.admin-metric-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
+  padding: 2rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: #00F2FF;
+  opacity: 0.5;
+}
+
+.admin-metric-card.danger::before { background: #FF4444; }
+.admin-metric-card.success::before { background: #00FF88; }
+
+.admin-metric-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #555;
+  margin-bottom: 1rem;
+}
+
+.admin-metric-value {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 3.5rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.admin-job-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  border: 1px solid var(--gray-800);
-  transition: all 0.3s;
+  background: rgba(255, 255, 255, 0.01);
+  border-radius: 16px;
+  margin-bottom: 1rem;
 }
 
-.stat-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--primary-green);
+.job-name {
+  font-weight: 700;
+  color: #A0A0A0;
 }
 
-.stat-icon {
-  width: 48px;
-  height: 48px;
-  background: var(--gray-800);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: var(--primary-green);
-}
-
-.stat-info h3 {
-  color: var(--gray-400);
-  font-size: 0.875rem;
-  margin-bottom: 0.25rem;
-}
-
-.stat-number {
-  color: white;
-  font-size: 1.75rem;
-  font-weight: bold;
-}
-
-.stat-card.available .stat-icon { color: #22c55e; }
-.stat-card.admins .stat-icon { color: #eab308; }
-.stat-card.reservations .stat-icon { color: #3b82f6; }
-
-.admin-actions {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.action-btn {
-  padding: 0.75rem 1.5rem;
-  background: var(--gray-800);
-  border: 1px solid var(--gray-700);
-  border-radius: 0.5rem;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 500;
-}
-
-.action-btn:hover {
-  background: var(--gray-700);
-  transform: translateY(-1px);
-}
-
-.scanner-btn {
-  background: var(--primary-green);
-  color: var(--primary-black);
-  border: none;
-}
-
-.scanner-btn:hover {
-  background: var(--primary-green-dark);
-}
-
-.admin-loading {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  color: var(--gray-400);
+.job-error {
+  color: #FF4444;
+  font-size: 0.85rem;
+  font-weight: 600;
+  max-width: 300px;
 }

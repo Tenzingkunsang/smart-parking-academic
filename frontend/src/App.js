@@ -30,7 +30,7 @@ import OnboardingHint from './components/ui/OnboardingHint';
 import 'leaflet/dist/leaflet.css';
 import 'sweetalert2/dist/sweetalert2.min.css';
 import { Toaster } from 'react-hot-toast';
-import './App.css';
+import './styles/tailwind.css';
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('token');
@@ -61,24 +61,26 @@ function App() {
   return (
     <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID || ''}>
       <Router>
-        <div className="app">
+        <div className="min-h-screen bg-[#050505] selection:bg-cyan-500/30">
           <Toaster
             position="top-center"
             toastOptions={{
               duration: 4000,
               className: 'app-toast',
               style: {
-                background: '#1e293b',
-                color: '#f1f5f9',
-                border: '1px solid rgba(99, 102, 241, 0.35)',
-                boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+                background: '#0a0a0a',
+                color: '#fff',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                backdropFilter: 'blur(20px)',
+                borderRadius: '1rem',
+                fontFamily: 'Inter, sans-serif'
               },
             }}
           />
           <Navbar />
           <OnboardingHint />
           
-          <main className="main-content">
+          <main>
             <Routes>
             {/* Discovery & Search */}
             <Route path="/" element={<Dashboard />} />

@@ -56,7 +56,7 @@ router.get('/stats', protect, adminAuth, async (req, res) => {
       {
         $group: {
           _id:   null,
-          total: { $sum: '$finalAmount' },   // FIX [6]
+          total: { $sum: '$amountInfo.finalAmount' },  // nested field
         },
       },
     ]);
@@ -71,7 +71,7 @@ router.get('/stats', protect, adminAuth, async (req, res) => {
           overstayCharge: { $gt: 0 },
         },
       },
-      { $group: { _id: null, total: { $sum: '$overstayCharge' } } },
+      { $group: { _id: null, total: { $sum: '$overstayInfo.overstayCharge' } } },
     ]);
     const todayOverstayRevenue = overstayResult.length ? overstayResult[0].total : 0;
 
@@ -87,7 +87,7 @@ router.get('/stats', protect, adminAuth, async (req, res) => {
     ]);
     const spotPerformance = await Reservation.aggregate([
       { $match: { status: { $in: ['completed', 'no-show'] } } },
-      { $group: { _id: '$parkingSpot', bookings: { $sum: 1 }, noShows: { $sum: { $cond: [{ $eq: ['$status', 'no-show'] }, 1, 0] } }, revenue: { $sum: '$finalAmount' } } },
+      { $group: { _id: '$parkingSpot', bookings: { $sum: 1 }, noShows: { $sum: { $cond: [{ $eq: ['$status', 'no-show'] }, 1, 0] } }, revenue: { $sum: '$amountInfo.finalAmount' } } },
       { $sort: { revenue: -1 } },
       { $limit: 10 }
     ]);
