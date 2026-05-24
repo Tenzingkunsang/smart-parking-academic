@@ -3,8 +3,9 @@ const ScheduledJob = require('../models/ScheduledJob');
 const Reservation = require('../models/Reservation');
 const notificationService = require('./notificationService');
 const socketService = require('./socketService'); 
-const { releaseReservedSpotAndPromote } = require('./reservationLifecycleService');
+const { releaseReservedSpotAndPromote, processNoShow } = require('./reservationLifecycleService');
 const { recalculateUserBehavior } = require('./userBehaviorService');
+const logger = require('../config/logger');
 
 /**
  * Schedules the 3-Stage lifecycle tasks.
@@ -89,33 +90,8 @@ async function runPendingJobs() {
       if (job.type === 'reservation_expiry_check') {
         // If they are still in 'booking' or 'arrival_window' but haven't SCANNED (checkInTime is null)
         if (!reservation.checkInTime && reservation.lifecycleStage !== 'active') {
-          
-          // 1. Update Stages
-          reservation.status = 'no-show';
-          reservation.lifecycleStage = 'no_show';
-          await reservation.save();
-          
-          // 2. Logic: Release spot back to market / promote waitlist
-          await recalculateUserBehavior(reservation.user);
-          await releaseReservedSpotAndPromote({ reservation, releaseReason: 'no_show' });
-
-          // 3. BROADCAST: Tell the Frontend the spot is free
-          if (io) {
-            io.emit('reservationStatusChanged', {
-              reservationId: reservation._id,
-              status: 'no-show',
-              lifecycleStage: 'no_show'
-            });
-          }
-
-          // 4. NOTIFY: Tell Ram he lost his spot
-          await notificationService.sendNotification(
-            reservation.user,
-            'Reservation Expired',
-            'You did not arrive within the 15-minute grace period. Your spot has been released.',
-            'arrival_timeout',
-            { reservationId: reservation._id }
-          );
+          // Use the unified, transaction-backed processNoShow function
+          await processNoShow(reservation._id);
         }
       }
 

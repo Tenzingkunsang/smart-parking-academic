@@ -74,6 +74,11 @@ exports.register = async (req, res) => {
   }
 };
 
+// Bug C5: brute-force protection. After MAX_ATTEMPTS bad passwords inside the
+// window, the account is locked for LOCK_MS. Successful login resets the counter.
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCK_MS = 15 * 60 * 1000;
+
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -87,19 +92,49 @@ exports.login = async (req, res) => {
 
     const user = await User.findOne({ email });
     if (!user) {
+      // Constant-ish response shape so attackers can't enumerate accounts via timing.
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials',
       });
     }
 
+    // Bug C5: enforce lockout window if active.
+    if (user.lockUntil && user.lockUntil > new Date()) {
+      const minutesLeft = Math.ceil((user.lockUntil - new Date()) / 60000);
+      return res.status(423).json({
+        success: false,
+        message: `Account temporarily locked. Try again in ${minutesLeft} minute(s).`,
+      });
+    }
+
+    // Bug C5: also reject inactive accounts at the login layer (not just protect()).
+    if (user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'This account has been deactivated.',
+      });
+    }
+
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      user.loginAttempts = (user.loginAttempts || 0) + 1;
+      if (user.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+        user.lockUntil = new Date(Date.now() + LOCK_MS);
+        user.loginAttempts = 0;
+      }
+      await user.save();
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials',
       });
     }
+
+    // Bug M7 + C5: reset counters and stamp lastLogin on success.
+    user.loginAttempts = 0;
+    user.lockUntil = null;
+    user.lastLogin = new Date();
+    await user.save();
 
     res.json({
       success: true,

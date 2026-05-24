@@ -87,3 +87,21 @@ exports.changePassword = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// --- FEATURE 4: ADMIN RESET VIOLATIONS ---
+exports.resetViolations = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'Entity not found' });
+    
+    user.violationCount = 0;
+    user.penaltyActive = false;
+    user.penaltyExpiry = null;
+    await user.save();
+    
+    res.json({ success: true, message: 'Grid violations reset' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Registry reset failed' });
+  }
+};
+// --- END ADD ---

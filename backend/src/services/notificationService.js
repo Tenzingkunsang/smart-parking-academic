@@ -112,6 +112,29 @@ const _sendEmail = async (user, type, meta) => {
         return emailService.sendEmail(user.email, subject, body);
       }
 
+      case 'arrival_timeout':
+        return emailService.sendNoShowNotification(
+          user.email,
+          user.name || 'Customer',
+          meta.spotNumber ?? 'N/A',
+          meta.date || new Date()
+        );
+
+      case 'arrival_warning': {
+        const warningSubject = `Action Required: Your spot #${meta.spotNumber ?? 'N/A'} hold is expiring`;
+        const warningBody = `<p>Your 15-minute grace period for <b>Spot #${meta.spotNumber ?? 'N/A'}</b> is almost over.</p>
+                             <p style="color:#6b7280;font-size:14px">Please head to the lot and scan your QR code, or confirm you are on your way via the app to extend the hold.</p>`;
+        return emailService.sendEmail(
+          user.email,
+          warningSubject,
+          `Action Required: Your spot #${meta.spotNumber ?? 'N/A'} hold is expiring soon.`,
+          emailService._template(warningSubject, warningBody, {
+            text: 'Confirm Arrival',
+            url: `${process.env.FRONTEND_URL}/reservations`
+          })
+        );
+      }
+
       default: {
         // Generic fallback for any future notification type
         const subject = meta.title || 'SmartPark Notification';

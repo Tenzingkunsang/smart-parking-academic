@@ -9,13 +9,14 @@
  *         spot decrement and reservation status update succeed or fail together.
  */
 
-const mongoose       = require('mongoose');
 const Reservation     = require('../models/Reservation');
 const ParkingSpot     = require('../models/ParkingSpot');
 const WaitlistEntry   = require('../models/WaitlistEntry');
+const User            = require('../models/User');
 const notificationService = require('./notificationService');
 const socketService   = require('./socketService');
 const logger          = require('../config/logger');
+const { withTransaction } = require('../utils/withTransaction');
 
 /**
  * Helper to update spot status and boolean flags consistently
@@ -70,89 +71,110 @@ async function emitSpot(spotId) {
  * was decremented, the decrement is rolled back automatically.
  */
 async function holdSpotAtomically({ reservationId, paymentMethod = 'cash' }) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+  // Bug HIGH-2: prefer a real transaction on replica sets, fall back gracefully
+  // for standalone Mongo. Either way the $gte guard on availableSpaces is atomic
+  // at the document level, so no two concurrent callers can both succeed.
+  let resultReservation = null;
+  let resultSpot = null;
   try {
-    const reservation = await Reservation.findById(reservationId)
-      .populate('parkingSpot')
-      .session(session);
+    await withTransaction(async (session) => {
+      const sessionOpt = session ? { session } : {};
+      const reservation = session
+        ? await Reservation.findById(reservationId).populate('parkingSpot').session(session)
+        : await Reservation.findById(reservationId).populate('parkingSpot');
 
-    if (!reservation) throw new Error('Reservation not found');
+      if (!reservation) throw new Error('Reservation not found');
+      if (reservation.status !== 'pending' || reservation.lifecycleStage !== 'booking') {
+        throw new Error('Reservation already processed or active');
+      }
 
-    // ─── FIX #9: Strict status guard ────────────────────────────────────
-    // Both conditions must be true. This catches a race where two verify
-    // calls for the same reservation come in at the same time.
-    if (reservation.status !== 'pending' || reservation.lifecycleStage !== 'booking') {
-      throw new Error('Reservation already processed or active');
-    }
+      const qty = reservation.quantity || 1;
 
-    const qty = reservation.quantity || 1;
+      const updatedSpot = await ParkingSpot.findOneAndUpdate(
+        { _id: reservation.parkingSpot._id, availableSpaces: { $gte: qty } },
+        { $inc: { availableSpaces: -qty, reservedSpaces: qty } },
+        { new: true, ...sessionOpt }
+      );
+      if (!updatedSpot) throw new Error('Parking spot is no longer available');
 
-    const updatedSpot = await ParkingSpot.findOneAndUpdate(
-      { _id: reservation.parkingSpot._id, availableSpaces: { $gte: qty } },
-      { $inc: { availableSpaces: -qty, reservedSpaces: qty } },
-      { new: true, session }
-    );
+      updateSpotStatusFlags(updatedSpot);
+      await updatedSpot.save(sessionOpt);
 
-    if (!updatedSpot) throw new Error('Parking spot is no longer available');
+      reservation.status          = 'reserved';
+      reservation.lifecycleStage  = 'arrival_window';
+      reservation.paymentStatus   = 'completed';
+      reservation.paymentMethod   = paymentMethod;
 
-    updateSpotStatusFlags(updatedSpot);
-    await updatedSpot.save({ session });
+      const graceEnd = new Date(reservation.scheduledArrival.getTime() + 15 * 60 * 1000);
+      reservation.arrivalConfirmedUntil = graceEnd;
+      reservation.arrivalWindow = {
+        startTime: reservation.scheduledArrival,
+        endTime: graceEnd,
+      };
 
-    reservation.status          = 'reserved';
-    reservation.lifecycleStage  = 'arrival_window';
-    reservation.paymentStatus   = 'completed';
-    reservation.paymentMethod   = paymentMethod;
-
-    const graceEnd = new Date(reservation.scheduledArrival.getTime() + 15 * 60 * 1000);
-    reservation.arrivalConfirmedUntil = graceEnd;
-    reservation.arrivalWindow = {
-      startTime: reservation.scheduledArrival,
-      endTime: graceEnd,
-    };
-
-    await reservation.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-
-    await emitSpot(updatedSpot._id);
-
-    return { reservation, parkingSpot: updatedSpot };
-
+      await reservation.save(sessionOpt);
+      resultReservation = reservation;
+      resultSpot = updatedSpot;
+    });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     logger.error('hold_spot_atomically_failed', { message: error.message, reservationId });
     throw error;
   }
+
+  await emitSpot(resultSpot._id);
+  return { reservation: resultReservation, parkingSpot: resultSpot };
 }
 
 /**
  * STAGE RELEASE: Handles No-Shows, Cancellations, or Completed sessions.
  *
- * ─── FIX #17: Transaction ─────────────────────────────────────────────────
- * Spot counter update and reservation status are now in the same transaction.
+ * ─── ROBUST RELEASE LOGIC ─────────────────────────────────────────────────
+ * Determines if the reservation was checked-in or active based on its stage:
+ *  - If checked-in/overstay: decrements occupiedSpaces, increments availableSpaces
+ *  - If reserved/no-show: decrements reservedSpaces, increments availableSpaces
+ * Both pathways update counters atomically and rebuild status flags.
  */
-async function releaseReservedSpotAndPromote({ reservation, releaseReason = 'released' }) {
+async function releaseReservedSpotAndPromote({ reservation, releaseReason = 'released', skipCounters = false, priorStatus = null }) {
   const qty = reservation.quantity || 1;
 
-  const updateQuery = (['checked-in', 'overstay'].includes(reservation.status) || ['active', 'overstay'].includes(reservation.lifecycleStage))
-    ? { $inc: { availableSpaces: qty, occupiedSpaces: -qty } }
-    : { $inc: { availableSpaces: qty, reservedSpaces: -qty } };
+  // Bug H6: if the caller already mutated reservation.status (e.g. set it to 'cancelled'
+  // before calling us), use the passed priorStatus to decide which counter to decrement.
+  const statusForDecision = priorStatus || reservation.status;
+  const wasCheckedIn = ['checked-in', 'overstay'].includes(statusForDecision) ||
+                       ['active', 'overstay'].includes(reservation.lifecycleStage);
 
-  const spot = await ParkingSpot.findByIdAndUpdate(
-    reservation.parkingSpot,
-    updateQuery,
-    { new: true }
-  );
+  // Bug H3: when the caller already decremented counters inside its own transaction,
+  // skip the $inc to avoid double-release. We still rebuild status flags + promote waitlist.
+  const spot = skipCounters
+    ? await ParkingSpot.findById(reservation.parkingSpot)
+    : await ParkingSpot.findByIdAndUpdate(
+        reservation.parkingSpot,
+        wasCheckedIn
+          ? { $inc: { availableSpaces: qty, occupiedSpaces: -qty } }
+          : { $inc: { availableSpaces: qty, reservedSpaces: -qty } },
+        { new: true }
+      );
 
-  if (!spot) return null;
+  if (!spot) {
+    logger.warn('release_spot_not_found', { parkingSpotId: reservation.parkingSpot, reservationId: reservation._id });
+    return null;
+  }
 
+  // Rebuild status flags based on final counter states
   updateSpotStatusFlags(spot);
   await spot.save();
 
-  // Waitlist promotion
+  logger.info('space_released', { 
+    spotId: spot._id, 
+    reservationId: reservation._id, 
+    reason: releaseReason,
+    wasCheckedIn,
+    availableNow: spot.availableSpaces,
+    reservedNow: spot.reservedSpaces,
+    occupiedNow: spot.occupiedSpaces
+  });
+
+  // Waitlist promotion: find next eligible entry
   const nextEntry = await WaitlistEntry.findOne({
     parkingSpot:      spot._id,
     promoted:         false,
@@ -184,6 +206,8 @@ async function releaseReservedSpotAndPromote({ reservation, releaseReason = 'rel
     nextEntry.promotedAt = new Date();
     await nextEntry.save();
 
+    logger.info('waitlist_promoted', { entryId: nextEntry._id, reservationId: promotedReservation._id });
+
     try {
       await notificationService.sendNotification(
         nextEntry.user,
@@ -194,7 +218,6 @@ async function releaseReservedSpotAndPromote({ reservation, releaseReason = 'rel
         { sendEmail: false }
       );
     } catch (notifErr) {
-      // ─── FIX #18: Notification failure logged, not swallowed ──────────
       logger.error('notification_failed_waitlist_promote', { message: notifErr.message });
     }
   }
@@ -203,8 +226,149 @@ async function releaseReservedSpotAndPromote({ reservation, releaseReason = 'rel
   return spot;
 }
 
+/**
+ * UNIFIED NO-SHOW PROCESSING
+ * 
+ * Handles the complete no-show lifecycle:
+ *  1. Mark reservation as no-show with proper stage transitions
+ *  2. Increment user violation count, apply penalty if >= 3 violations
+ *  3. Release the held space and promote waitlist
+ *  4. Recalculate user's punctuality behavior rate
+ *  5. Broadcast status updates over Socket.io
+ *  6. Send email/notification timeout alerts
+ */
+async function processNoShow(reservationId) {
+  try {
+    // Bug Task-4: race-safe transition. The reallocation watcher and the
+    // scheduled-job worker can both fire for the same reservation. Using
+    // findOneAndUpdate with a status filter means exactly one caller wins —
+    // the loser receives `null` and exits cleanly without double-incrementing
+    // violations or double-releasing the spot.
+    const reservation = await Reservation.findOneAndUpdate(
+      {
+        _id: reservationId,
+        status: { $in: ['reserved', 'pending'] },
+      },
+      {
+        $set: {
+          status: 'no-show',
+          lifecycleStage: 'no_show',
+          'noShowInfo.markedAt': new Date(),
+          'noShowInfo.reason': 'grace_period_expired',
+        },
+      },
+      { new: true }
+    ).populate('user parkingSpot');
+
+    if (!reservation) {
+      // Either it doesn't exist or another worker already handled it.
+      const existing = await Reservation.findById(reservationId).select('status');
+      if (existing) {
+        logger.info('process_no_show_already_processed', { reservationId, currentStatus: existing.status });
+        return existing;
+      }
+      logger.warn('process_no_show_reservation_not_found', { reservationId });
+      return null;
+    }
+
+    logger.info('reservation_marked_no_show', { reservationId });
+
+    // Bug Task-3 + Task-4: violation increment and penalty flagging in a single
+    // atomic op via aggregation pipeline. This avoids a read-modify-write race.
+    const userUpdate = await User.findOneAndUpdate(
+      { _id: reservation.user._id },
+      [{
+        $set: {
+          violationCount: { $add: [{ $ifNull: ['$violationCount', 0] }, 1] },
+          penaltyActive: {
+            $cond: [
+              { $gte: [{ $add: [{ $ifNull: ['$violationCount', 0] }, 1] }, 3] },
+              true,
+              { $ifNull: ['$penaltyActive', false] },
+            ],
+          },
+          penaltyExpiry: {
+            $cond: [
+              {
+                $and: [
+                  { $gte: [{ $add: [{ $ifNull: ['$violationCount', 0] }, 1] }, 3] },
+                  { $ne: [{ $ifNull: ['$penaltyActive', false] }, true] },
+                ],
+              },
+              new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              { $ifNull: ['$penaltyExpiry', null] },
+            ],
+          },
+        },
+      }],
+      { new: true }
+    );
+    const user = userUpdate;
+    if (user?.penaltyActive) {
+      logger.warn('user_penalty_applied', {
+        userId: user._id,
+        violationCount: user.violationCount,
+        penaltyExpiresAt: user.penaltyExpiry,
+      });
+    }
+
+    // Release the held space and promote waitlist
+    await releaseReservedSpotAndPromote({ reservation, releaseReason: 'no_show' });
+
+    // Recalculate user's punctuality behavior
+    if (user) {
+      const { recalculateUserBehavior } = require('./userBehaviorService');
+      await recalculateUserBehavior(user._id);
+    }
+
+    // Broadcast real-time status update
+    const io = socketService.getIo();
+    if (io) {
+      io.emit('reservationStatusChanged', {
+        reservationId: reservation._id,
+        status: 'no-show',
+        lifecycleStage: 'no_show',
+        violationCount: user?.violationCount,
+        penaltyActive: user?.penaltyActive
+      });
+    }
+
+    // Send timeout notification
+    try {
+      await notificationService.sendNotification(
+        reservation.user._id,
+        'Reservation Expired - No Show',
+        `You did not arrive within the 15-minute grace period for Spot #${reservation.parkingSpot?.spotNumber || 'N/A'}. Your spot has been released. Violation count: ${user?.violationCount || 0}/3`,
+        'arrival_timeout',
+        { 
+          reservationId: reservation._id, 
+          violationCount: user?.violationCount,
+          spotNumber: reservation.parkingSpot?.spotNumber,
+          date: reservation.scheduledArrival
+        }
+      );
+    } catch (notifErr) {
+      logger.error('notification_failed_no_show', { 
+        reservationId, 
+        message: notifErr.message 
+      });
+    }
+
+    return reservation;
+
+  } catch (error) {
+    logger.error('process_no_show_error', { 
+      reservationId, 
+      message: error.message, 
+      stack: error.stack 
+    });
+    throw error;
+  }
+}
+
 module.exports = {
   holdSpotAtomically,
   releaseReservedSpotAndPromote,
   updateSpotStatusFlags,
+  processNoShow,
 };
