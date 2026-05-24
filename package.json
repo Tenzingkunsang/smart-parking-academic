@@ -1,9 +1,0 @@
-{
-  "dependencies": {
-    "axios": "^1.13.6",
-    "framer-motion": "^12.36.0",
-    "leaflet": "^1.9.4",
-    "lucide-react": "^0.577.0",
-    "react-leaflet": "^5.0.0"
-  }
-}
