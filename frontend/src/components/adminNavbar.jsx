@@ -279,7 +279,7 @@ const Navbar = () => {
                   <Link to="/admin/spots" className={`nav-link admin-link ${location.pathname === '/admin/spots' ? 'active' : ''}`}>
                     Manage Spots
                   </Link>
-                  <Link to="/admin/scan" className={`nav-link admin-link ${location.pathname === '/admin/scan' ? 'active' : ''}`}>
+                  <Link to="/admin/qr-scanner" className={`nav-link admin-link ${location.pathname === '/admin/qr-scanner' ? 'active' : ''}`}>
                     QR Scanner
                   </Link>
                 </>

@@ -3,10 +3,14 @@ import { MapPin, Clock, Calendar, X, CreditCard, ShieldCheck, Zap, Info, Loader2
 
 const PLATE_KEY = 'vehiclePlate';
 
+// Bug NEW-3: <input type="datetime-local"> expects LOCAL time. Building the value
+// from .toISOString() emits UTC, so users in non-UTC timezones got a min attribute
+// that was hours off (and could pick "valid" times in the past).
 function minArrivalValue() {
   const d = new Date(Date.now() + 5 * 60 * 1000);
   d.setSeconds(0, 0);
-  return d.toISOString().slice(0, 16);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode = 'book' }) => {
@@ -50,11 +54,14 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode =
   const handleFinalConfirm = async () => {
     setLoading(true);
     try {
+      // Bug M2: persist plate so the user does not retype it next booking, and pass
+      // it through to the parent so it can be saved on the reservation.
+      if (vehiclePlate) localStorage.setItem(PLATE_KEY, vehiclePlate);
       const scheduledArrival = new Date(arrivalValue).toISOString();
       if (mode === 'waitlist') {
-        await onJoinWaitlist?.(spot._id, duration, scheduledArrival);
+        await onJoinWaitlist?.(spot._id, duration, scheduledArrival, { vehiclePlate });
       } else {
-        await onConfirm(spot._id, duration, scheduledArrival);
+        await onConfirm(spot._id, duration, scheduledArrival, { vehiclePlate });
       }
     } finally {
       setLoading(false);
@@ -100,7 +107,7 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode =
                <div className="space-y-1">
                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Active Node</span>
                   <h3 className="text-lg font-black text-white font-display leading-none">{spot.locationName}</h3>
-                  <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]">{spot.location?.address || 'Standard Sector'}</p>
+                  <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]">{spot.address || 'Standard Sector'}</p>
                </div>
                <div className="text-right">
                   <span className="text-[10px] font-black text-cyan-400 block font-display">#{spot.spotNumber}</span>
@@ -139,6 +146,10 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode =
                         <option value={120}>2 Hours</option>
                         <option value={180}>3 Hours</option>
                         <option value={240}>4 Hours</option>
+                        <option value={360}>6 Hours</option>
+                        <option value={480}>8 Hours</option>
+                        <option value={720}>12 Hours</option>
+                        <option value={1440}>24 Hours</option>
                      </select>
                   </div>
                </div>

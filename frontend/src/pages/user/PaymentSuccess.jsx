@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { API_BASE } from '../../config/api';
+import { API_BASE, getAuthToken } from '../../config/api';
 import { CheckCircle2, AlertCircle, Loader2, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
 
 const PaymentSuccess = () => {
@@ -13,7 +13,7 @@ const PaymentSuccess = () => {
   useEffect(() => {
     const verifyPayment = async () => {
       try {
-        const token = localStorage.getItem('token');
+        const token = getAuthToken();
         const pidx = searchParams.get('pidx');
         const reservationId = searchParams.get('reservationId') || searchParams.get('purchase_order_id');
 
@@ -111,7 +111,7 @@ const PaymentSuccess = () => {
            )}
 
            <button 
-             onClick={() => navigate(error ? '/payment' : '/reservations')} 
+             onClick={() => navigate('/reservations')}
              className="w-full h-16 rounded-2xl bg-white text-black font-display font-black text-xs uppercase tracking-widest hover:bg-cyan-400 hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-xl shadow-cyan-400/10"
            >
              {error ? 'Retry Settlement' : 'Access Digital Permits'}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { isTokenValid } from './config/api';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -20,11 +21,13 @@ import PaymentSuccess from './pages/user/PaymentSuccess';
 import Notifications from './pages/user/Notifications';
 
 // Admin components
+import AdminLayout from './components/AdminLayout';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AdminSpots from './pages/Admin/AdminSpots';
 import AdminReservations from './pages/Admin/AdminReservations';
 import AdminUsers from './pages/Admin/AdminUsers';
-import QRScannerPage from './pages/Admin/QRScannerPage';
+import AdminScanner from './pages/Admin/AdminScanner';
+import AdminManageSpots from './pages/Admin/AdminManageSpots';
 import OnboardingHint from './components/ui/OnboardingHint';
 
 import 'leaflet/dist/leaflet.css';
@@ -32,29 +35,36 @@ import 'sweetalert2/dist/sweetalert2.min.css';
 import { Toaster } from 'react-hot-toast';
 import './styles/tailwind.css';
 
+// Purge stale auth keys without triggering a hard redirect (safe during render)
+const clearAuthStorage = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('user');
+};
+
 const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" />;
+  if (!isTokenValid()) {
+    clearAuthStorage();
+    return <Navigate to="/login" replace />;
+  }
+  return children;
 };
 
 const AdminRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
+  if (!isTokenValid()) {
+    clearAuthStorage();
+    return <Navigate to="/login" replace />;
+  }
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  
-  if (!token) {
-    return <Navigate to="/login" />;
-  }
-  
   if (user.userType !== 'admin') {
-    return <Navigate to="/parking" />;
+    return <Navigate to="/parking" replace />;
   }
-  
   return children;
 };
 
 const PublicOnlyRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  return !token ? children : <Navigate to="/" />;
+  return !isTokenValid() ? children : <Navigate to="/" replace />;
 };
 
 function App() {
@@ -150,47 +160,22 @@ function App() {
               }
             />
             
-            {/* Admin Routes */}
-            <Route 
-              path="/admin" 
+            {/* Admin Routes — all wrapped in AdminLayout for persistent sidebar */}
+            <Route
+              path="/admin"
               element={
                 <AdminRoute>
-                  <AdminDashboard />
+                  <AdminLayout />
                 </AdminRoute>
-              } 
-            />
-            <Route 
-              path="/admin/spots" 
-              element={
-                <AdminRoute>
-                  <AdminSpots />
-                </AdminRoute>
-              } 
-            />
-            <Route 
-              path="/admin/reservations" 
-              element={
-                <AdminRoute>
-                  <AdminReservations />
-                </AdminRoute>
-              } 
-            />
-            <Route 
-              path="/admin/users" 
-              element={
-                <AdminRoute>
-                  <AdminUsers />
-                </AdminRoute>
-              } 
-            />
-            <Route 
-              path="/admin/scan" 
-              element={
-                <AdminRoute>
-                  <QRScannerPage />
-                </AdminRoute>
-              } 
-            />
+              }
+            >
+              <Route index element={<AdminDashboard />} />
+              <Route path="spots" element={<AdminSpots />} />
+              <Route path="reservations" element={<AdminReservations />} />
+              <Route path="users" element={<AdminUsers />} />
+              <Route path="qr-scanner" element={<AdminScanner />} />
+              <Route path="manage-spots" element={<AdminManageSpots />} />
+            </Route>
             
             {/* 404 - Not Found */}
             <Route path="*" element={<NotFound />} />

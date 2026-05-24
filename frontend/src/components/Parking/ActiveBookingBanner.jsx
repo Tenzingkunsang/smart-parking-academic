@@ -7,27 +7,54 @@ const ActiveBookingBanner = ({ booking, onViewTicket }) => {
 
   useEffect(() => {
     const compute = () => {
-      const start = new Date(booking.reservationTime || booking.createdAt);
-      const endMs = start.getTime() + (booking.duration || 60) * 60 * 1000;
-      const diffMs = endMs - Date.now();
+      const isActive = booking.status === 'checked-in' || booking.status === 'overstay';
 
-      if (diffMs <= 0) {
-        setTimeLeft('Expired');
-        setUrgent(true);
-        return;
+      if (isActive) {
+        // For checked-in sessions: count down remaining booked time from checkInTime
+        const checkIn = new Date(booking.checkInTime || booking.reservationTime || booking.createdAt);
+        const endMs = checkIn.getTime() + (booking.duration || 60) * 60 * 1000;
+        const diffMs = endMs - Date.now();
+
+        if (diffMs <= 0) {
+          setTimeLeft('OVERTIME ACTIVE');
+          setUrgent(true);
+          return;
+        }
+
+        const totalSecs = Math.floor(diffMs / 1000);
+        const hrs  = Math.floor(totalSecs / 3600);
+        const mins = Math.floor((totalSecs % 3600) / 60);
+        const secs = totalSecs % 60;
+
+        setTimeLeft(
+          hrs > 0
+            ? `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`
+            : `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`
+        );
+        setUrgent(diffMs < 10 * 60 * 1000);
+      } else {
+        // For reserved (upcoming) sessions: count down until scheduledArrival
+        const arrival = new Date(booking.scheduledArrival || booking.reservationTime || booking.createdAt);
+        const diffMs = arrival.getTime() - Date.now();
+
+        if (diffMs <= 0) {
+          setTimeLeft('CHECK-IN NOW');
+          setUrgent(true);
+          return;
+        }
+
+        const totalSecs = Math.floor(diffMs / 1000);
+        const hrs  = Math.floor(totalSecs / 3600);
+        const mins = Math.floor((totalSecs % 3600) / 60);
+        const secs = totalSecs % 60;
+
+        setTimeLeft(
+          hrs > 0
+            ? `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`
+            : `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`
+        );
+        setUrgent(diffMs < 10 * 60 * 1000);
       }
-
-      const totalSecs = Math.floor(diffMs / 1000);
-      const hrs  = Math.floor(totalSecs / 3600);
-      const mins = Math.floor((totalSecs % 3600) / 60);
-      const secs = totalSecs % 60;
-
-      setTimeLeft(
-        hrs > 0
-          ? `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`
-          : `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`
-      );
-      setUrgent(diffMs < 10 * 60 * 1000); 
     };
 
     compute();
@@ -54,7 +81,9 @@ const ActiveBookingBanner = ({ booking, onViewTicket }) => {
              <Clock size={20} strokeWidth={2.5} />
           </div>
           <div>
-            <div className={`text-[10px] font-black uppercase tracking-widest ${urgent ? 'text-red-400' : 'text-cyan-400'} opacity-80`}>Active allocation</div>
+            <div className={`text-[10px] font-black uppercase tracking-widest ${urgent ? 'text-red-400' : 'text-cyan-400'} opacity-80`}>
+              {(booking.status === 'checked-in' || booking.status === 'overstay') ? 'Active session' : 'Upcoming booking'}
+            </div>
             <div className="text-sm font-bold text-white truncate max-w-[150px] sm:max-w-none">{locationName} · #{spotNumber}</div>
           </div>
         </div>

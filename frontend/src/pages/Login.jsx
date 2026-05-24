@@ -29,6 +29,7 @@ const Login = () => {
         localStorage.setItem('token', data.token);
         localStorage.setItem('authToken', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
         window.location.href = data.user.userType === 'admin' ? '/admin' : '/';
       } else {
         setError(data.message || 'Identity verification failed');
@@ -46,12 +47,14 @@ const Login = () => {
       const response = await fetch(`${API_BASE}/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: credentialResponse.credential })
+        body: JSON.stringify({ credential: credentialResponse.credential })
       });
       const data = await response.json();
       if (data.success) {
         localStorage.setItem('token', data.token);
+        localStorage.setItem('authToken', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
         navigate('/');
       }
     } catch {

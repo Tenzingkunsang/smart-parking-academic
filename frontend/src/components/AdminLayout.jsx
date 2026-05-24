@@ -16,8 +16,8 @@ const AdminLayout = () => {
 
   const navLinks = [
     { name: 'Console', path: '/admin', icon: LayoutDashboard },
-    { name: 'Capacity', path: '/admin/spots', icon: MapPin },
-    { name: 'Validator', path: '/admin/scan', icon: QrCode },
+    { name: 'Capacity', path: '/admin/manage-spots', icon: MapPin },
+    { name: 'Scanner', path: '/admin/qr-scanner', icon: QrCode },
     { name: 'Logs', path: '/admin/reservations', icon: Calendar },
     { name: 'Units', path: '/admin/users', icon: Users },
   ];

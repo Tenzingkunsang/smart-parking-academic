@@ -46,6 +46,22 @@ const AdminUsers = () => {
     } catch { toast.error('Privilege escalation protocol failed.'); }
   };
 
+  const handleResetViolations = async (userId) => {
+    if (!window.confirm('Reset Entity Grid Violations?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/admin/users/${userId}/reset-violations`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('Grid violations cleared.');
+        fetchUsers();
+      }
+    } catch { toast.error('Reset protocol failed.'); }
+  };
+
   const filtered = users.filter(u => {
     const q = searchQuery.toLowerCase();
     return u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
@@ -117,6 +133,13 @@ const AdminUsers = () => {
                              </div>
                           </div>
                        </div>
+                       
+                       {user.violationCount > 0 && (
+                          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+                             <span className="text-[9px] font-black uppercase tracking-widest text-amber-500">Grid Violations</span>
+                             <span className="text-sm font-black font-display text-white">{user.violationCount}</span>
+                          </div>
+                       )}
                     </div>
                  </div>
 
@@ -129,7 +152,37 @@ const AdminUsers = () => {
                        {user.userType === 'admin' ? <ShieldAlert size={14} /> : <ShieldCheck size={14} />}
                        {user.userType === 'admin' ? 'Revoke Root' : 'Grant Root'}
                     </Button>
-                    <button onClick={async () => { if(window.confirm('Purge Entity Identity?')) { /* delete logic */ } }} className="w-10 h-10 rounded-xl bg-red-500/5 text-red-500 border border-red-500/10 flex items-center justify-center hover:bg-red-500/10 transition-all">
+                    {user.violationCount > 0 && (
+                      <button 
+                        onClick={() => handleResetViolations(user._id)}
+                        className="h-10 px-3 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/10 flex items-center justify-center hover:bg-amber-500/20 transition-all text-[9px] font-black uppercase"
+                        title="Reset Violations"
+                      >
+                         Reset
+                      </button>
+                    )}
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm(`Delete ${user.name}? This cannot be undone.`)) return;
+                        try {
+                          const token = localStorage.getItem('token');
+                          const response = await fetch(`${API_BASE}/admin/users/${user._id}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` },
+                          });
+                          const data = await response.json();
+                          if (data.success) {
+                            toast.success('User deleted.');
+                            fetchUsers();
+                          } else {
+                            toast.error(data.message || 'Delete failed.');
+                          }
+                        } catch {
+                          toast.error('Network error during delete.');
+                        }
+                      }}
+                      className="w-10 h-10 rounded-xl bg-red-500/5 text-red-500 border border-red-500/10 flex items-center justify-center hover:bg-red-500/10 transition-all"
+                    >
                        <Trash2 size={16} />
                     </button>
                  </div>

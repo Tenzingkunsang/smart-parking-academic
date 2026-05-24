@@ -27,6 +27,30 @@ const Navbar = () => {
     }
   }, [location]);
 
+  // Fetch unread notification count whenever login state changes or location changes
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setUnreadCount(0);
+      return;
+    }
+    const fetchUnread = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/notifications/unread/count`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success) setUnreadCount(data.data?.unreadCount || 0);
+      } catch {
+        // silently ignore — badge is non-critical
+      }
+    };
+    fetchUnread();
+    // Poll every 30 seconds while logged in
+    const interval = setInterval(fetchUnread, 30000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, location.pathname]);
+
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
@@ -97,7 +121,11 @@ const Navbar = () => {
             <div className="flex items-center gap-4">
               <Link to="/notifications" className="relative p-2 text-slate-400 hover:text-white transition-colors">
                 <Bell size={20} />
-                {unreadCount > 0 && <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />}
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full text-[9px] font-black text-white flex items-center justify-center px-1 leading-none">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </Link>
               
               <Link to="/profile" className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-cyan-400 font-bold hover:border-cyan-400/50 transition-all">

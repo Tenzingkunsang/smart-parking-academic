@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { QRCodeCanvas } from 'qrcode.react';
 import CancelBookingModal from '../CancelBooking/CancelBookingModal';
 import { getCancellationStatus } from '../../utils/Cancellationpolicy';
-import { Printer, XCircle, ChevronLeft, Calendar, MapPin, CarFront, CreditCard, DollarSign, ArrowLeft, ShieldCheck, Ticket, Download, Info, Clock, Loader2, Zap } from 'lucide-react';
+import { Printer, ChevronLeft, Calendar, ArrowLeft, ShieldCheck, Ticket, Download, Clock, Loader2, AlertTriangle, RefreshCw, CreditCard, XCircle } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import { API_BASE, getAuthToken, handleAuthExpiry } from '../../config/api';
 
 const TicketPage = () => {
   const location = useLocation();
@@ -14,9 +16,9 @@ const TicketPage = () => {
     spot,
     duration,
     totalAmount,
-    paymentMethod,
+    paymentMethod: initialPaymentMethod,
     bookingId,
-    paymentStatus,
+    paymentStatus: initialPaymentStatus,
     createdAt,
     scheduledArrival,
   } = location.state || {};
@@ -26,16 +28,127 @@ const TicketPage = () => {
   const [cancelStatus, setCancelStatus] = useState(null);
   const [isCancelled, setIsCancelled] = useState(false);
 
+  // Live state we refresh from the backend so users see truth even after
+  // returning from a stuck/aborted Khalti flow.
+  const [status, setStatus] = useState(null);
+  const [checkInTime, setCheckInTime] = useState(null);
+  const [paymentStatus, setPaymentStatus] = useState(initialPaymentStatus);
+  const [paymentMethod, setPaymentMethod] = useState(initialPaymentMethod);
+  const [verifying, setVerifying] = useState(false);
+  const [initiatingPayment, setInitiatingPayment] = useState(false);
+
+  const isNoShow = status === 'no-show';
+  const reservationStart = scheduledArrival ? new Date(scheduledArrival) : new Date(createdAt || Date.now());
+  const checkInDeadline = new Date(reservationStart.getTime() + 15 * 60 * 1000);
+  const isExpired = !isCancelled && !isNoShow && !checkInTime && new Date() > checkInDeadline;
+
+  const isPending =
+    status === 'pending' ||
+    (paymentMethod === 'khalti' && paymentStatus !== 'completed' && status !== 'reserved' && status !== 'checked-in');
+
+  const fetchReservation = useCallback(async () => {
+    if (!bookingId) return;
+    try {
+      const res = await fetch(`${API_BASE}/reservations/${bookingId}`, {
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+      });
+      if (res.status === 401) { handleAuthExpiry(); return; }
+      const data = await res.json();
+      if (data.success && data.data) {
+        setStatus(data.data.status);
+        setCheckInTime(data.data.checkInTime);
+        setPaymentStatus(data.data.paymentStatus);
+        if (data.data.paymentMethod) setPaymentMethod(data.data.paymentMethod);
+      }
+    } catch (err) {
+      // Silent: we still have the cached state from navigation
+    }
+  }, [bookingId]);
+
+  useEffect(() => {
+    fetchReservation();
+    // Refresh status every 30s to detect no-show/expiry transitions
+    const id = setInterval(fetchReservation, 30000);
+    return () => clearInterval(id);
+  }, [fetchReservation]);
+
   useEffect(() => {
     if (spot && bookingId) {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
       const qrData = JSON.stringify({
         reservationId: bookingId,
+        bookingId: bookingId,
+        userId: user._id,
         spotNumber: spot.spotNumber,
         location: spot.locationName,
+        timestamp: Date.now()
       });
       setQrValue(qrData);
     }
   }, [spot, bookingId]);
+
+  const handleAttemptVerification = async () => {
+    setVerifying(true);
+    try {
+      const res = await fetch(`${API_BASE}/payments/khalti/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+        body: JSON.stringify({ reservationId: bookingId }),
+      });
+      if (res.status === 401) { handleAuthExpiry(); return; }
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Payment verified — permit activated');
+        await fetchReservation();
+      } else {
+        toast.error(data.message || 'Verification failed');
+      }
+    } catch (err) {
+      toast.error('Network error during verification');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleInitiatePayment = async () => {
+    setInitiatingPayment(true);
+    try {
+      const res = await fetch(`${API_BASE}/payments/khalti/initiate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+        body: JSON.stringify({ reservationId: bookingId }),
+      });
+      if (res.status === 401) { handleAuthExpiry(); return; }
+      const data = await res.json();
+      if (data.success && data.payment_url) {
+        window.location.href = data.payment_url;
+      } else {
+        toast.error(data.message || 'Could not start payment');
+        setInitiatingPayment(false);
+      }
+    } catch (err) {
+      toast.error('Network error starting payment');
+      setInitiatingPayment(false);
+    }
+  };
+
+  const downloadQR = () => {
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      const url = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `SmartPark-Permit-${bookingId?.slice(-6)}.png`;
+      link.href = url;
+      link.click();
+      toast.success('Permit saved to device');
+    }
+  };
 
   useEffect(() => {
     if (!createdAt) return;
@@ -71,7 +184,7 @@ const TicketPage = () => {
          </button>
          <div className="flex gap-3">
             <Button variant="secondary" onClick={() => window.print()} className="!px-4 !py-3"><Printer size={18} /></Button>
-            <Button variant="secondary" className="!px-4 !py-3"><Download size={18} /></Button>
+            <Button variant="secondary" onClick={downloadQR} className="!px-4 !py-3"><Download size={18} /></Button>
          </div>
       </div>
 
@@ -125,7 +238,7 @@ const TicketPage = () => {
                </div>
             </div>
 
-            {!isCancelled && (
+            {!isCancelled && !isPending && !isNoShow && !isExpired && (
                <div className="py-10 flex flex-col items-center gap-8 bg-white/[0.02] border border-white/5 rounded-[2.5rem]">
                   <div className="bg-white p-6 rounded-3xl shadow-[0_0_50px_rgba(255,255,255,0.05)]">
                      {qrValue ? (
@@ -142,6 +255,56 @@ const TicketPage = () => {
                      <p className="text-[10px] text-slate-500 font-medium max-w-[220px] mx-auto italic">
                         Scan temporal token at gate terminal to authorize entry protocol.
                      </p>
+                  </div>
+               </div>
+            )}
+
+            {(isNoShow || isExpired) && (
+               <div className="py-10 px-8 flex flex-col items-center gap-6 bg-red-500/[0.04] border border-red-500/20 rounded-[2.5rem] text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shadow-[0_0_30px_rgba(239,68,68,0.1)]">
+                     <XCircle size={32} />
+                  </div>
+                  <div className="space-y-2 max-w-sm">
+                     <h3 className="text-2xl font-black font-display tracking-tight text-white uppercase italic">Access Revoked</h3>
+                     <p className="text-xs font-medium text-slate-400 leading-relaxed">
+                        {isNoShow 
+                          ? "This permit was revoked because you did not arrive within the 15-minute grace period." 
+                          : "The validation window for this permit has closed. Your spot has been released."}
+                     </p>
+                  </div>
+               </div>
+            )}
+
+            {!isCancelled && isPending && (
+               <div className="py-10 px-8 flex flex-col items-center gap-6 bg-amber-500/[0.04] border border-amber-500/20 rounded-[2.5rem] text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-[0_0_30px_rgba(251,191,36,0.1)]">
+                     <AlertTriangle size={32} />
+                  </div>
+                  <div className="space-y-2 max-w-sm">
+                     <h3 className="text-2xl font-black font-display tracking-tight text-white uppercase italic">Payment Pending</h3>
+                     <p className="text-xs font-medium text-slate-400 leading-relaxed">
+                        Your QR permit is locked until payment is verified. If you already completed payment on Khalti, click <span className="text-amber-300 font-bold">Attempt Verification</span>. Otherwise, complete payment to activate the permit.
+                     </p>
+                  </div>
+
+                  <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                     <Button
+                        onClick={handleAttemptVerification}
+                        disabled={verifying || initiatingPayment}
+                        className="flex items-center justify-center gap-2 !py-3 !text-[10px]"
+                     >
+                        {verifying ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                        Attempt Verification
+                     </Button>
+                     <Button
+                        variant="secondary"
+                        onClick={handleInitiatePayment}
+                        disabled={verifying || initiatingPayment}
+                        className="flex items-center justify-center gap-2 !py-3 !text-[10px]"
+                     >
+                        {initiatingPayment ? <Loader2 className="animate-spin" size={14} /> : <CreditCard size={14} />}
+                        Pay with Khalti
+                     </Button>
                   </div>
                </div>
             )}

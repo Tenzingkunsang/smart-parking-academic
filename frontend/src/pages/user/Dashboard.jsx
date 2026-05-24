@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Car, Clock, History, ArrowRight, Bell, Sparkles, MapPin, Loader2, Zap, TrendingUp, ShieldCheck } from 'lucide-react';
+import { Car, Clock, History, ArrowRight, Bell, Sparkles, MapPin, Loader2, Zap, TrendingUp, ShieldCheck, ChevronRight, AlertTriangle } from 'lucide-react';
 import reservationService from '../../services/reservationService';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import { ChevronRight } from 'lucide-react';
+import WalletComponent from '../../components/Parking/Wallet';
 
 const formatSessionRemain = (ms) => {
   if (ms == null || Number.isNaN(ms)) return '—';
@@ -105,6 +105,17 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen pt-32 pb-24 px-6 max-w-7xl mx-auto space-y-12 animate-in fade-in duration-700">
       
+      {/* Email Verification Hint */}
+      {!currentUser?.googleEmailVerified && currentUser?.authMethod === 'email' && (
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs font-medium">
+           <div className="flex items-center gap-3">
+              <AlertTriangle size={16} className="text-amber-400" />
+              <span>Your email is not verified. Please check your inbox to enable all security features.</span>
+           </div>
+           <button onClick={() => navigate('/profile')} className="underline font-bold hover:text-white transition-colors">Verify Now</button>
+        </div>
+      )}
+
       {/* Hero Welcome */}
       <section className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 p-10 md:p-14 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.06] backdrop-blur-2xl relative overflow-hidden group">
         <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl group-hover:bg-cyan-500/10 transition-colors duration-700" />
@@ -144,7 +155,7 @@ const Dashboard = () => {
         <Card className="flex flex-col justify-between h-48 border-blue-500/20 bg-blue-500/[0.01]">
            <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
-                 <TrendingUp size={20} />
+                 <Zap size={20} className="fill-current" />
               </div>
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Grid Latency</span>
            </div>
@@ -216,40 +227,47 @@ const Dashboard = () => {
           )}
         </section>
 
-        <section className="space-y-6">
-           <h2 className="text-2xl font-black font-display text-white uppercase tracking-tight mb-6">Rapid Access</h2>
-           <div className="grid gap-6">
-              <button 
-                onClick={() => navigate('/reservations')}
-                className="group p-8 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.06] hover:bg-white/[0.03] hover:border-cyan-500/30 transition-all text-left flex items-center justify-between"
-              >
-                <div className="flex items-center gap-6">
-                   <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
-                      <History size={24} />
-                   </div>
-                   <div>
-                      <h4 className="text-xl font-black font-display text-white mb-1">Archive</h4>
-                      <p className="text-sm text-slate-500 font-medium">Audit logs and temporal history.</p>
-                   </div>
-                </div>
-                <ChevronRight size={24} className="text-slate-700 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
-              </button>
+        <section className="space-y-10">
+           <div>
+              <h2 className="text-2xl font-black font-display text-white uppercase tracking-tight mb-6">Grid Wallet</h2>
+              <WalletComponent />
+           </div>
 
-              <button 
-                onClick={() => navigate('/notifications')}
-                className="group p-8 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.06] hover:bg-white/[0.03] hover:border-blue-500/30 transition-all text-left flex items-center justify-between"
-              >
-                <div className="flex items-center gap-6">
-                   <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
-                      <Bell size={24} />
+           <div>
+              <h2 className="text-2xl font-black font-display text-white uppercase tracking-tight mb-6">Rapid Access</h2>
+              <div className="grid gap-6">
+                 <button 
+                   onClick={() => navigate('/reservations')}
+                   className="group p-8 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.06] hover:bg-white/[0.03] hover:border-cyan-500/30 transition-all text-left flex items-center justify-between"
+                 >
+                   <div className="flex items-center gap-6">
+                      <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+                         <History size={24} />
+                      </div>
+                      <div>
+                         <h4 className="text-xl font-black font-display text-white mb-1">Archive</h4>
+                         <p className="text-sm text-slate-500 font-medium">Audit logs and temporal history.</p>
+                      </div>
                    </div>
-                   <div>
-                      <h4 className="text-xl font-black font-display text-white mb-1">Protocol Alerts</h4>
-                      <p className="text-sm text-slate-500 font-medium">Real-time system communication.</p>
+                   <ChevronRight size={24} className="text-slate-700 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+                 </button>
+
+                 <button 
+                   onClick={() => navigate('/notifications')}
+                   className="group p-8 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.06] hover:bg-white/[0.03] hover:border-blue-500/30 transition-all text-left flex items-center justify-between"
+                 >
+                   <div className="flex items-center gap-6">
+                      <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                         <Bell size={24} />
+                      </div>
+                      <div>
+                         <h4 className="text-xl font-black font-display text-white mb-1">Protocol Alerts</h4>
+                         <p className="text-sm text-slate-500 font-medium">Real-time system communication.</p>
+                      </div>
                    </div>
-                </div>
-                <ChevronRight size={24} className="text-slate-700 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
-              </button>
+                   <ChevronRight size={24} className="text-slate-700 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+                 </button>
+              </div>
            </div>
         </section>
       </div>
@@ -267,7 +285,7 @@ const Dashboard = () => {
               <span className="text-[10px] font-black uppercase tracking-widest">Retrieving Packets...</span>
            </div>
         ) : recentHistory.length === 0 ? (
-           <Card className="py-20 text-center space-y-4 border-dashed">
+           <Card className="py-20 text-center space-y-4 border-dashed bg-transparent">
               <p className="text-slate-500 font-medium">Zero temporal records identified in current grid segment.</p>
               <Button variant="secondary" onClick={() => navigate('/parking')}>Reserve First Spot</Button>
            </Card>
@@ -287,8 +305,8 @@ const Dashboard = () => {
                 
                 <div className="flex items-end justify-between">
                    <div className="space-y-0.5">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-700 block">Settlement</span>
-                      <span className="text-xl font-display font-black text-white">Rs.{r.totalAmount}</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-700 block">Amount</span>
+                      <span className="text-xl font-display font-black text-white">Rs.{r.amountInfo?.totalAmount || 0}</span>
                    </div>
                    <span className="text-[9px] font-bold text-slate-600 italic">
                       {new Date(r.createdAt).toLocaleDateString()}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MapPin, X, ChevronRight, Filter, Zap, LayoutGrid, Clock, List, Loader2, Navigation, Info, ArrowRight } from 'lucide-react';
+import { Search, MapPin, X, ChevronRight, Zap, LayoutGrid, List, Loader2, Navigation, ArrowRight, CreditCard, Wallet, Accessibility, Umbrella, Clock, BatteryCharging, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { io } from 'socket.io-client';
 import parkingService from '../../services/parkingService';
@@ -9,6 +9,7 @@ import ParkingMap from './ParkingMap';
 import SpotAmenities from './SpotAmenities';
 import LotGridModal from './Lotgridmodal';
 import ActiveBookingBanner from './ActiveBookingBanner';
+import ParkingGrid from './ParkingGrid';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import { clusterSpotsByGrid, haversineMeters, formatDistance } from '../../utils/geo';
@@ -28,14 +29,20 @@ const ParkingSpots = () => {
   const [showModal, setShowModal] = useState(false);
   const [modalSpot, setModalSpot] = useState(null);
   const [userPosition, setUserPosition] = useState(null);
-  const [geoConfirm, setGeoConfirm] = useState(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const [lotGridSpot, setLotGridSpot] = useState(null);
   const [activeBooking, setActiveBooking] = useState(null);
   const [mapExpanded, setMapExpanded] = useState(false);
   const [modalMode, setModalMode] = useState('book');
 
-  const cardRefs = useRef({});
+  // Location list state
+  const [selectedLocationName, setSelectedLocationName] = useState(null);
+
+  // FEATURE 6: LIVE CALCULATION STATE
+  const [bookingDuration, setBookingDuration] = useState(60); 
+  const [paymentMethod, setPaymentMethod] = useState('wallet');
+  const [selectedSpot, setSelectedSpot] = useState(null);
+
   const navigate = useNavigate();
 
   const fetchSpots = useCallback(async () => {
@@ -64,7 +71,7 @@ const ParkingSpots = () => {
     fetchActiveBooking();
     const socket = io(getSocketOrigin(), { auth: { token: localStorage.getItem('token') } });
     socket.on('connect', () => setSocketConnected(true));
-    socket.on('spot:statusChanged', fetchSpots);
+    socket.on('parkingSpotStatusChanged', fetchSpots);
     socket.on('disconnect', () => setSocketConnected(false));
     return () => socket.disconnect();
   }, [fetchSpots, fetchActiveBooking]);
@@ -78,12 +85,23 @@ const ParkingSpots = () => {
     }
   }, []);
 
+  const handleSpotSelect = (spot) => {
+    setSelectedSpot(spot);
+    setSelectedSpotId(spot ? spot._id : null);
+  };
+
+  const calculateTotalPrice = () => {
+    if (!selectedSpot) return 0;
+    const hours = Math.ceil(bookingDuration / 60);
+    return hours * selectedSpot.price;
+  };
+
   const filteredSpots = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return spots.filter(s => {
       if (filter !== 'all' && s.status !== filter) return false;
       if (vehicleFilter !== 'all' && s.vehicleType !== vehicleFilter) return false;
-      if (q && !s.locationName.toLowerCase().includes(q)) return false;
+      if (!selectedLocationName && q && !s.locationName.toLowerCase().includes(q) && !s.address?.toLowerCase().includes(q)) return false;
       if (priceMax && s.price > parseInt(priceMax)) return false;
       return true;
     }).map(s => {
@@ -91,9 +109,50 @@ const ParkingSpots = () => {
       if (userPosition && s.location?.lat != null) d = haversineMeters(userPosition.lat, userPosition.lng, s.location.lat, s.location.lng);
       return { ...s, distanceMeters: d };
     });
-  }, [spots, filter, vehicleFilter, searchQuery, priceMax, userPosition]);
+  }, [spots, filter, vehicleFilter, searchQuery, priceMax, userPosition, selectedLocationName]);
 
   const clusters = useMemo(() => clusterSpotsByGrid(filteredSpots, 0.012), [filteredSpots]);
+
+  // Group filtered spots by Location Name for a clean list representation
+  const locations = useMemo(() => {
+    const groups = {};
+    filteredSpots.forEach(spot => {
+      const locName = spot.locationName || 'Unknown Lot';
+      if (!groups[locName]) {
+        groups[locName] = {
+          name: locName,
+          address: spot.address || spot.location?.address || 'Kathmandu, Nepal',
+          lat: spot.location?.lat,
+          lng: spot.location?.lng,
+          spots: [],
+          price: spot.price || 50,
+          vehicleTypes: new Set()
+        };
+      }
+      groups[locName].spots.push(spot);
+      if (spot.vehicleType) {
+        groups[locName].vehicleTypes.add(spot.vehicleType);
+      }
+    });
+
+    return Object.values(groups).map(group => {
+      // Use the model's actual space counters so a lot with 50 spaces shows "24/50"
+      // rather than "1/1" (which counted documents instead of spaces).
+      const total = group.spots.reduce((sum, s) => sum + (s.totalSpaces || 1), 0);
+      const available = group.spots.reduce((sum, s) => sum + (s.availableSpaces || 0), 0);
+      return {
+        ...group,
+        totalSpots: total,
+        availableSpots: available,
+        vehicleTypesArray: Array.from(group.vehicleTypes)
+      };
+    });
+  }, [filteredSpots]);
+
+  const selectedLocation = useMemo(() => {
+    if (!selectedLocationName) return null;
+    return locations.find(loc => loc.name === selectedLocationName);
+  }, [locations, selectedLocationName]);
 
   const openBooking = useCallback((spot) => {
     const token = localStorage.getItem('token');
@@ -111,13 +170,20 @@ const ParkingSpots = () => {
     setShowModal(true);
   }, [navigate]);
 
-  const handleConfirmBooking = async (spotId, duration, scheduledArrival) => {
+  const handleConfirmBooking = async (spotId, duration, scheduledArrival, extras = {}) => {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE}/reservations/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ parkingSpotId: spotId, duration, quantity: 1, scheduledArrival }),
+        // Bug NEW-4: vehicle plate now travels with the create request.
+        body: JSON.stringify({
+          parkingSpotId: spotId,
+          duration,
+          quantity: 1,
+          scheduledArrival,
+          vehiclePlate: extras.vehiclePlate || '',
+        }),
       });
       const data = await response.json();
       if (data.success) {
@@ -183,7 +249,13 @@ const ParkingSpots = () => {
         <ParkingMap
           clusters={clusters}
           selectedSpotId={selectedSpotId}
-          onSpotClick={s => { setSelectedSpotId(s._id); setMapExpanded(false); }}
+          onSpotClick={s => {
+            setSelectedLocationName(s.locationName);
+            setSelectedSpotId(null);
+            setSelectedSpot(null);
+            setSearchQuery('');
+            setMapExpanded(false);
+          }}
           userPosition={userPosition}
         />
         <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-20">
@@ -205,7 +277,7 @@ const ParkingSpots = () => {
                <h1 className="text-4xl font-black font-display tracking-tight text-white uppercase italic">Grid Capacity</h1>
                <div className="flex items-center gap-3 text-slate-500 font-bold text-[10px] uppercase tracking-widest">
                   <div className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-amber-500 animate-pulse'}`} />
-                  {socketConnected ? 'Live Connection' : 'Synchronizing'} · {filteredSpots.length} Nodes Identified
+                  {socketConnected ? 'Live Connection' : 'Synchronizing'} · {selectedLocationName && selectedLocation ? selectedLocation.spots.length : filteredSpots.length} {selectedLocationName ? 'Spots' : 'Nodes'} Identified
                </div>
             </div>
 
@@ -214,7 +286,7 @@ const ParkingSpots = () => {
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input
                     type="text"
-                    placeholder="Search Sector ID..."
+                    placeholder={selectedLocationName ? "Search Spot Number (e.g. 5)..." : "Search Location or Address..."}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full md:w-80 h-14 bg-white/[0.03] border border-white/[0.08] rounded-2xl pl-12 pr-4 text-sm font-bold text-white focus:outline-none focus:border-cyan-400/40 transition-all"
@@ -223,61 +295,259 @@ const ParkingSpots = () => {
             </div>
           </header>
 
-          {/* Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-            {filteredSpots.map((spot) => (
-              <Card 
-                key={spot._id}
-                className={`group flex flex-col justify-between h-[420px] transition-all duration-500 border-white/[0.06] hover:border-cyan-400/30 ${selectedSpotId === spot._id ? 'border-cyan-400 shadow-[0_0_40px_rgba(0,242,255,0.05)]' : ''}`}
-              >
-                <div className="space-y-6">
-                  <div className="flex justify-between items-start">
-                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${
-                      spot.status === 'available' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-white/5 border-white/5 text-slate-600'
-                    }`}>
-                      {spot.status}
-                    </span>
-                    <span className="text-[10px] font-display font-black text-cyan-400 block tracking-tighter">#{spot.spotNumber}</span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-black font-display text-white group-hover:text-cyan-400 transition-colors leading-tight truncate">{spot.locationName}</h3>
-                    <p className="text-[10px] text-slate-500 font-medium truncate flex items-center gap-1 uppercase tracking-widest">
-                      <MapPin size={10} className="text-cyan-400" /> {spot.location?.address || 'KTM Grid'}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-8">
-                     <div>
-                        <span className="text-[8px] font-black text-slate-700 uppercase tracking-widest block mb-1">Rate</span>
-                        <span className="text-xl font-display font-black text-white italic">Rs.{spot.price}</span>
+          {/* VISUAL GRID / LOCATIONS LIST */}
+          <div className="space-y-6">
+             {selectedLocationName && selectedLocation ? (
+               <div className="space-y-6 animate-in fade-in duration-500">
+                 {/* Lot details panel */}
+                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 p-6 rounded-3xl bg-white/[0.02] border border-white/[0.06] shadow-xl">
+                   <div className="space-y-1">
+                     <button 
+                       onClick={() => { setSelectedLocationName(null); setSelectedSpot(null); setSelectedSpotId(null); setSearchQuery(''); }}
+                       className="inline-flex items-center gap-2 text-xs font-bold text-cyan-400 hover:text-cyan-300 transition-colors mb-2"
+                     >
+                       &larr; Back to Locations
+                     </button>
+                     <h2 className="text-2xl font-extrabold text-white tracking-tight">{selectedLocationName}</h2>
+                     <p className="text-xs text-slate-400">{selectedLocation.address}</p>
+                   </div>
+                   <div className="flex items-center gap-4 text-xs self-stretch md:self-auto justify-between md:justify-end">
+                     <div className="px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold">
+                       {selectedLocation.availableSpots} / {selectedLocation.totalSpots} Available
                      </div>
-                     <div>
-                        <span className="text-[8px] font-black text-slate-700 uppercase tracking-widest block mb-1">Range</span>
-                        <span className="text-xl font-display font-black text-slate-400">{formatDistance(spot.distanceMeters)}</span>
+                     <div className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white font-bold">
+                       Rs. {selectedLocation.price}/hr
                      </div>
-                  </div>
+                   </div>
+                 </div>
 
-                  <SpotAmenities features={spot.features} variant="minimal" />
-                </div>
+                 <div className="flex items-center gap-3">
+                    <LayoutGrid size={18} className="text-cyan-400" />
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Visual Grid Allocation</h2>
+                 </div>
+                 
+                 <ParkingGrid
+                    spots={selectedLocation.spots.filter(s => {
+                      if (searchQuery) {
+                        const num = s.spotNumber != null ? String(s.spotNumber) : '';
+                        const name = (s.locationName || '').toLowerCase();
+                        const q = searchQuery.toLowerCase();
+                        return num.includes(q) || name.includes(q);
+                      }
+                      return true;
+                    })}
+                    onSpotSelect={handleSpotSelect}
+                 />
+               </div>
+             ) : (
+               <div className="space-y-6 animate-in fade-in duration-500">
+                 <div className="flex items-center gap-3">
+                    <List size={18} className="text-cyan-400" />
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Select a Parking Location</h2>
+                 </div>
 
-                <div className="flex gap-3 pt-6 border-t border-white/5 mt-auto">
-                   <button onClick={() => setLotGridSpot(spot)} className="w-12 h-12 rounded-xl bg-white/5 border border-white/5 text-slate-500 flex items-center justify-center hover:text-white transition-all">
-                      <LayoutGrid size={18} />
-                   </button>
-                   <Button 
-                    onClick={() => spot.status === 'available' ? openBooking(spot) : openWaitlist(spot)} 
-                    className="flex-1 !py-0 h-12 !text-[10px]"
-                    variant={spot.status === 'available' ? 'primary' : 'secondary'}
-                   >
-                      {spot.status === 'available' ? 'Secure Node' : 'Waitlist Link'}
-                   </Button>
-                </div>
-              </Card>
-            ))}
+                 <div className="grid grid-cols-1 gap-4">
+                   {locations.length === 0 ? (
+                     <div className="rounded-3xl border border-dashed border-white/10 p-12 text-center text-slate-500 text-sm font-semibold">
+                       No parking locations found matching filters.
+                     </div>
+                   ) : (
+                     locations.map((loc) => {
+                       const occupancyPercentage = Math.round((loc.availableSpots / loc.totalSpots) * 100) || 0;
+                       const amenities = [];
+                       // Aggregate amenities from spots
+                       loc.spots.forEach(spot => {
+                         if (spot.features) {
+                           spot.features.forEach(f => {
+                             if (!amenities.includes(f)) amenities.push(f);
+                           });
+                         }
+                       });
+
+                       const amenityIcons = {
+                         'ev_charging': { Icon: BatteryCharging, label: 'EV Charging' },
+                         'handicap':    { Icon: Accessibility,   label: 'Accessible' },
+                         'covered':     { Icon: Umbrella,        label: 'Covered' },
+                         '24_hours':    { Icon: Clock,           label: '24/7' },
+                       };
+
+                       return (
+                         <div
+                           key={loc.name}
+                           onClick={() => { setSelectedLocationName(loc.name); setSearchQuery(''); }}
+                           className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-white/[0.08] to-white/[0.02] border border-white/[0.12] hover:border-cyan-400/50 p-8 transition-all duration-500 hover:scale-[1.02] cursor-pointer shadow-2xl hover:shadow-cyan-500/20 backdrop-blur-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-8 animate-in slide-in-from-bottom-2 duration-300 hover:bg-gradient-to-br hover:from-white/[0.12] hover:to-white/[0.05]"
+                         >
+                           {/* Background Glow Effect */}
+                           <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
+                             <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/5 to-cyan-500/0" />
+                           </div>
+
+                           <div className="flex items-start gap-6 flex-1 relative z-10">
+                             {/* Premium Badge/Icon with Glow */}
+                             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/30 to-cyan-600/10 border border-cyan-400/40 flex items-center justify-center text-cyan-300 group-hover:from-cyan-400/50 group-hover:to-cyan-500/20 group-hover:shadow-lg group-hover:shadow-cyan-500/30 transition-all duration-500 shrink-0 backdrop-blur-sm">
+                               <MapPin size={28} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
+                             </div>
+
+                             <div className="space-y-3 flex-1">
+                               <div className="flex flex-wrap items-center gap-3">
+                                 <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-cyan-100 transition-colors">{loc.name}</h3>
+                                 {loc.distanceMeters !== null && (
+                                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-400/30 backdrop-blur-sm">
+                                     <Navigation size={12} />
+                                     {formatDistance(loc.distanceMeters)}
+                                   </span>
+                                 )}
+                               </div>
+                               <p className="text-sm text-slate-300 font-medium max-w-md group-hover:text-slate-200 transition-colors">{loc.address}</p>
+                               
+                               {/* Dynamic Amenities Display */}
+                               {amenities.length > 0 && (
+                                 <div className="flex items-center gap-2 pt-2 flex-wrap">
+                                   {amenities.slice(0, 4).map(amenity => {
+                                     const info = amenityIcons[amenity] || { icon: '✓', label: amenity };
+                                     return (
+                                       <span key={amenity} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-white/10 to-white/5 text-slate-200 border border-white/10 hover:border-cyan-400/30 transition-all backdrop-blur-sm">
+                                         {info.Icon && <info.Icon size={12} />}
+                                         <span className="hidden sm:inline">{info.label}</span>
+                                       </span>
+                                     );
+                                   })}
+                                   {amenities.length > 4 && (
+                                     <span className="text-xs text-slate-400 font-bold ml-2">+{amenities.length - 4} more</span>
+                                   )}
+                                 </div>
+                               )}
+                             </div>
+                           </div>
+
+                           <div className="flex items-center gap-10 w-full md:w-auto justify-between md:justify-end border-t border-white/5 md:border-t-0 pt-6 md:pt-0 shrink-0 relative z-10">
+                             <div className="flex items-center gap-8">
+                               <div className="text-left md:text-right">
+                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block group-hover:text-slate-400 transition-colors">Price</span>
+                                 <span className="text-xl font-extrabold text-white group-hover:text-cyan-100 transition-colors">Rs. {loc.price}/hr</span>
+                               </div>
+
+                               <div className="text-left md:text-right space-y-2">
+                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-400 transition-colors block">Occupancy</span>
+                                 <div className="flex items-center gap-3">
+                                   <span className={`text-lg font-extrabold font-display transition-colors ${
+                                     loc.availableSpots > loc.totalSpots * 0.5 
+                                       ? 'text-emerald-400' 
+                                       : loc.availableSpots > 0 
+                                         ? 'text-amber-400' 
+                                         : 'text-red-400'
+                                   }`}>
+                                     {loc.availableSpots}/{loc.totalSpots}
+                                   </span>
+                                   {/* Radial/Glowing Occupancy Bar */}
+                                   <div className="w-20 h-2 bg-white/5 rounded-full overflow-hidden border border-white/10 backdrop-blur-sm">
+                                     <div 
+                                       className={`h-full rounded-full transition-all duration-700 shadow-lg ${
+                                         occupancyPercentage > 50 
+                                           ? 'bg-gradient-to-r from-emerald-400 to-emerald-500 shadow-emerald-500/50' 
+                                           : occupancyPercentage > 15 
+                                             ? 'bg-gradient-to-r from-amber-400 to-amber-500 shadow-amber-500/50' 
+                                             : 'bg-gradient-to-r from-red-400 to-red-500 shadow-red-500/50'
+                                       }`}
+                                       style={{ width: `${occupancyPercentage}%` }}
+                                     />
+                                   </div>
+                                 </div>
+                               </div>
+                             </div>
+
+                             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center text-slate-400 group-hover:text-cyan-300 group-hover:from-cyan-500/20 group-hover:to-cyan-600/10 group-hover:shadow-lg group-hover:shadow-cyan-500/20 transition-all duration-300 shrink-0 backdrop-blur-sm border border-white/10 group-hover:border-cyan-400/30">
+                               <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform duration-300" />
+                             </div>
+                           </div>
+                         </div>
+                       );
+                     })
+                   )}
+                 </div>
+               </div>
+             )}
           </div>
         </div>
       </section>
+
+      {/* FEATURE 6: PERSISTENT SELECTION BAR */}
+      {selectedSpot && (
+        <div className="fixed bottom-0 left-0 right-0 z-[100] px-6 pb-6 animate-in slide-in-from-bottom-full duration-500">
+           <div className="max-w-4xl mx-auto p-6 rounded-[2.5rem] bg-[#0a0a0a]/90 border border-white/10 backdrop-blur-2xl shadow-[0_30px_60px_rgba(0,0,0,0.8)] flex flex-col md:flex-row items-center justify-between gap-8">
+               <div className="flex items-center gap-6">
+                  <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)] animate-pulse">
+                     <Zap size={28} className="fill-current" />
+                  </div>
+                  <div>
+                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 block">Unit Identified</span>
+                     <h4 className="text-xl font-black font-display text-white">{selectedSpot.locationName} <span className="text-cyan-400 ml-1">#{selectedSpot.spotNumber}</span></h4>
+                  </div>
+               </div>
+
+               <div className="flex flex-wrap items-center gap-6">
+                  {/* Duration Selector */}
+                  <div className="space-y-2">
+                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 ml-1">Temporal Window</span>
+                     <div className="relative">
+                        <select
+                           value={bookingDuration}
+                           onChange={(e) => setBookingDuration(parseInt(e.target.value))}
+                           className="h-12 w-32 appearance-none bg-white/[0.03] border border-white/10 rounded-xl pl-4 pr-10 text-xs font-black uppercase tracking-wider text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all cursor-pointer"
+                        >
+                           <option className="bg-[#0a0a0a] text-white" value={30}>30 Mins</option>
+                           <option className="bg-[#0a0a0a] text-white" value={60}>1 Hour</option>
+                           <option className="bg-[#0a0a0a] text-white" value={120}>2 Hours</option>
+                           <option className="bg-[#0a0a0a] text-white" value={240}>4 Hours</option>
+                           <option className="bg-[#0a0a0a] text-white" value={360}>6 Hours</option>
+                           <option className="bg-[#0a0a0a] text-white" value={480}>8 Hours</option>
+                           <option className="bg-[#0a0a0a] text-white" value={720}>12 Hours</option>
+                           <option className="bg-[#0a0a0a] text-white" value={1440}>24 Hours</option>
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                           <ChevronDown size={14} />
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Payment Method */}
+                  <div className="space-y-2">
+                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 ml-1">Method</span>
+                     <div className="flex gap-2">
+                        {['wallet', 'khalti'].map(m => (
+                          <button 
+                            key={m}
+                            onClick={() => setPaymentMethod(m)}
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
+                              paymentMethod === m 
+                                ? 'bg-gradient-to-r from-cyan-400 to-cyan-500 text-black shadow-lg shadow-cyan-500/20 scale-105 border-transparent' 
+                                : 'bg-white/[0.03] text-slate-400 border border-white/10 hover:text-white hover:bg-white/[0.06]'
+                            }`}
+                          >
+                            {m === 'wallet' ? <Wallet size={18} /> : <CreditCard size={18} />}
+                          </button>
+                        ))}
+                     </div>
+                  </div>
+
+                  <div className="w-px h-12 bg-white/5 hidden md:block" />
+
+                  <div className="text-right space-y-1">
+                     <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Total Settlement</span>
+                     <p className="text-2xl font-display font-black text-white">Rs.{calculateTotalPrice()}</p>
+                  </div>
+
+                  <Button 
+                    onClick={() => openBooking(selectedSpot)}
+                    className="h-12 px-8 rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-black font-display font-black text-xs uppercase tracking-widest hover:scale-[1.02] transition-all duration-300 active:scale-95 shadow-xl shadow-cyan-500/10 flex items-center gap-2 border-transparent"
+                  >
+                    Start Allocation
+                    <ArrowRight size={14} />
+                  </Button>
+               </div>
+            </div>
+        </div>
+      )}
 
       {modalSpot && (
         <BookingModal
