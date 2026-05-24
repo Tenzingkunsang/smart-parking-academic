@@ -34,11 +34,16 @@ async function scheduleReservationJobs(reservation) {
     });
   }
 
-  await ScheduledJob.create({
-    type: 'reservation_expiry_check',
-    reservationId: reservation._id,
-    runAt: expiryAt,
-  });
+  // Only schedule the expiry sweeper if the grace period is still in the future.
+  // Otherwise a late payment (e.g. cash settled hours after the original slot)
+  // would immediately fire processNoShow on the next cron tick — see Bug 1.
+  if (expiryAt > now) {
+    await ScheduledJob.create({
+      type: 'reservation_expiry_check',
+      reservationId: reservation._id,
+      runAt: expiryAt,
+    });
+  }
 }
 
 async function cancelReservationJobs(reservationId) {

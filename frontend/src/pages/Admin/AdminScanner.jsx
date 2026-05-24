@@ -27,6 +27,9 @@ const AdminScanner = () => {
   const [error, setError] = useState('');
   const scannerRef = useRef(null);
   const scanningRef = useRef(true);
+  // Bug 3 fix: keep the raw scanned text so the action POST can send the
+  // signed token verbatim to the backend for HMAC verification.
+  const scannedTextRef = useRef(null);
 
   useEffect(() => {
     scanningRef.current = scanning;
@@ -42,9 +45,28 @@ const AdminScanner = () => {
     setScanAction(null);
 
     try {
-      const qrObj = JSON.parse(decodedText);
-      const bookingId = qrObj.reservationId || qrObj.bookingId;
+      // Bug 3 fix: accept both QR formats —
+      //   1. Legacy plain JSON: {"reservationId":"..."}
+      //   2. Signed token from /scan-token: "<b64url-body>.<b64url-sig>"
+      let bookingId = null;
+      try {
+        const qrObj = JSON.parse(decodedText);
+        bookingId = qrObj.reservationId || qrObj.bookingId;
+      } catch (_) {
+        const parts = decodedText.split('.');
+        if (parts.length === 2 && parts[0]) {
+          try {
+            const b64 = parts[0].replace(/-/g, '+').replace(/_/g, '/');
+            const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+            const body = JSON.parse(atob(padded));
+            bookingId = body.reservationId || body.bookingId;
+          } catch (_inner) {
+            // fall through to the error below
+          }
+        }
+      }
       if (!bookingId) throw new Error('Invalid QR code — no booking ID found.');
+      scannedTextRef.current = decodedText;
 
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
@@ -146,7 +168,9 @@ const AdminScanner = () => {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          qrData: JSON.stringify({ reservationId: bookingData._id }),
+          // Send the raw scanned payload so the backend can verify the HMAC
+          // on signed tokens. Legacy JSON QRs still pass through unchanged.
+          qrData: scannedTextRef.current || JSON.stringify({ reservationId: bookingData._id }),
         }),
       });
       if (response.status === 401) { handleAuthExpiry(); return; }
@@ -175,6 +199,7 @@ const AdminScanner = () => {
     setBookingData(null);
     setScanAction(null);
     setError('');
+    scannedTextRef.current = null;
     setScanning(true);
   };
 

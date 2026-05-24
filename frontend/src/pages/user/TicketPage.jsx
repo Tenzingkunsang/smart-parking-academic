@@ -72,20 +72,34 @@ const TicketPage = () => {
     return () => clearInterval(id);
   }, [fetchReservation]);
 
+  // Bug 2 fix: the QR must encode the backend's HMAC-signed scan token, not a
+  // client-built JSON blob. The scanner endpoint rejects unsigned QRs (and
+  // stale signed ones) so we re-mint every 4 minutes while the ticket is live.
   useEffect(() => {
-    if (spot && bookingId) {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const qrData = JSON.stringify({
-        reservationId: bookingId,
-        bookingId: bookingId,
-        userId: user._id,
-        spotNumber: spot.spotNumber,
-        location: spot.locationName,
-        timestamp: Date.now()
-      });
-      setQrValue(qrData);
+    if (!bookingId) { setQrValue(''); return; }
+    if (!['reserved', 'checked-in', 'overstay'].includes(status)) {
+      setQrValue('');
+      return;
     }
-  }, [spot, bookingId]);
+    let cancelled = false;
+    const fetchScanToken = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/reservations/${bookingId}/scan-token`, {
+          headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        if (res.status === 401) { handleAuthExpiry(); return; }
+        const data = await res.json();
+        if (!cancelled && data?.success && data?.data?.token) {
+          setQrValue(data.data.token);
+        }
+      } catch (_) {
+        // Keep prior token visible on transient network blips.
+      }
+    };
+    fetchScanToken();
+    const id = setInterval(fetchScanToken, 4 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [bookingId, status]);
 
   const handleAttemptVerification = async () => {
     setVerifying(true);
@@ -164,8 +178,6 @@ const TicketPage = () => {
   }
 
   const hours = Math.ceil(duration / 60);
-  const reservationStart = scheduledArrival ? new Date(scheduledArrival) : new Date(createdAt || Date.now());
-  const checkInDeadline = new Date(reservationStart.getTime() + 15 * 60 * 1000);
 
   const handleCancelled = () => {
     setShowCancelModal(false);
