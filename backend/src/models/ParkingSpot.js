@@ -4,6 +4,10 @@ const parkingSpotSchema = new mongoose.Schema({
   locationName: { type: String, required: true },
   address: { type: String, required: true },
   location: { lat: { type: Number, required: true }, lng: { type: Number, required: true } },
+  geoLocation: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { type: [Number], default: undefined }
+  },
   totalSpaces: { type: Number, required: true, default: 10 },
   availableSpaces: { type: Number, required: true, default: 10 },
   reservedSpaces: { type: Number, default: 0 },
@@ -19,6 +23,15 @@ const parkingSpotSchema = new mongoose.Schema({
   status: { type: String, default: 'available' },
   vehicleType: { type: String, default: 'car' }
 }, { timestamps: true, collection: 'parkingspots' });
+
+parkingSpotSchema.index({ geoLocation: '2dsphere' });
+
+parkingSpotSchema.pre('save', function(next) {
+  if (this.location && typeof this.location.lng === 'number' && typeof this.location.lat === 'number') {
+    this.geoLocation = { type: 'Point', coordinates: [this.location.lng, this.location.lat] };
+  }
+  next();
+});
 
 parkingSpotSchema.methods.bookSpace = async function(quantity = 1) {
   if (this.availableSpaces < quantity) throw new Error(`Only ${this.availableSpaces} spaces available`);

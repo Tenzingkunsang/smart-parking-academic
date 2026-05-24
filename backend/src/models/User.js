@@ -122,7 +122,37 @@ const userSchema = new mongoose.Schema({
   overstayDebt: {
     type: Number,
     default: 0,
-  }
+  },
+  // --- ADD THIS BLOCK FOR WALLET & PENALTY SYSTEM ---
+  walletBalance: {
+    type: Number,
+    default: 0
+  },
+  walletTransactions: [{
+    amount: Number,
+    type: {
+      type: String,
+      enum: ['credit', 'debit']
+    },
+    description: String,
+    date: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  violationCount: {
+    type: Number,
+    default: 0
+  },
+  penaltyActive: {
+    type: Boolean,
+    default: false
+  },
+  penaltyExpiry: {
+    type: Date,
+    default: null
+  },
+  // --- END ADD ---
 }, {
   timestamps: true
 });
@@ -187,6 +217,47 @@ userSchema.methods.incrementBookings = async function() {
 userSchema.methods.addFailedCheckin = async function() {
   this.failedCheckins += 1;
   await this.save();
+};
+
+// Bug Task-3: canonical wallet mutation. Always use this helper instead of
+// reading walletBalance + saving — that pattern races and corrupts the ledger.
+// Returns the updated user document.
+//
+//   amount: positive number (the absolute value of the change)
+//   type:   'credit' | 'debit'
+//   description: human-readable transaction reason
+userSchema.statics.applyWalletDelta = async function(userId, { amount, type, description }) {
+  if (!userId) throw new Error('userId is required');
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('amount must be a positive number');
+  if (!['credit', 'debit'].includes(type)) throw new Error('type must be credit or debit');
+  const delta = type === 'credit' ? amount : -amount;
+
+  // Single atomic findOneAndUpdate: balance and transaction log move together.
+  // For debits we additionally guard with $gte so an overdraft is rejected at
+  // the DB level rather than only in JS.
+  const filter = type === 'debit'
+    ? { _id: userId, walletBalance: { $gte: amount } }
+    : { _id: userId };
+
+  const updated = await this.findOneAndUpdate(
+    filter,
+    {
+      $inc: { walletBalance: delta },
+      $push: { walletTransactions: { amount, type, description, date: new Date() } },
+    },
+    { new: true }
+  );
+  if (!updated) {
+    if (type === 'debit') {
+      const err = new Error('Insufficient wallet balance');
+      err.statusCode = 400;
+      throw err;
+    }
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  return updated;
 };
 
 // Keep Google ID uniqueness only for real (non-null) values.

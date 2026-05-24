@@ -106,7 +106,18 @@ const reservationSchema = new mongoose.Schema({
     overstayMinutes: { type: Number, default: 0 },
     overstayCharge: { type: Number, default: 0 },
     overstayDebt: { type: Number, default: 0 },
-    overstayPaid: { type: Boolean, default: false }
+    overstayPaid: { type: Boolean, default: false },
+    // Bug NEW-2: schema was silently dropping the paid timestamp.
+    overstayPaidAt: { type: Date, default: null }
+  },
+
+  // Bug NEW-4: vehicle plate now flows end-to-end. Stored per-reservation so
+  // historical receipts and admin scanning UIs know which vehicle was billed.
+  vehiclePlate: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    default: ''
   },
   
   noShowInfo: {
@@ -130,6 +141,9 @@ const reservationSchema = new mongoose.Schema({
   },
   
   qrCodeData: { type: String, sparse: true, index: true },
+  // Bug MED-3: HMAC-signed reservation token embedded in the QR. Persisted so
+  // admins can re-issue the same image without losing the signature.
+  qrToken: { type: String, default: null },
   
   scheduledJobs: {
     reminderJobId: { type: mongoose.Schema.Types.ObjectId, ref: 'ScheduledJob', sparse: true },
@@ -149,7 +163,10 @@ const reservationSchema = new mongoose.Schema({
     default: 'cash'
   },
   paymentReference: { type: String },
-  arrivalConfirmedUntil: { type: Date, default: null }
+  arrivalConfirmedUntil: { type: Date, default: null },
+  confirmedByUser: { type: Boolean, default: false },
+  lastNotifiedAt: { type: Date, default: null },
+  overtimeApplied: { type: Boolean, default: false },  penaltyApplied: { type: Boolean, default: false }
 }, {
   timestamps: true,
   toJSON: { virtuals: true }
