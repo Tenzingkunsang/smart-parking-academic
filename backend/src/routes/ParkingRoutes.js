@@ -28,10 +28,11 @@ router.get('/spots', async (req, res) => {
 // @desc    Get availablende parking spots
 router.get('/available', async (req, res) => {
   try {
-    const spots = await ParkingSpot.find({ 
-      isOccupied: false, 
-      isReserved: false,
-      status: 'available'
+    // Bug H4: legacy isOccupied/isReserved/status flags treat partially-booked lots
+    // as unavailable. Use the actual capacity counter instead.
+    const spots = await ParkingSpot.find({
+      isActive: true,
+      availableSpaces: { $gt: 0 },
     }).sort('spotNumber');
     res.status(200).json({
       success: true,

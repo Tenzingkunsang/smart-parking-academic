@@ -12,17 +12,32 @@ const { notFound, errorHandler } = require('./middleware/errorHandler');
 const authRoutes = require('./routes/authRoutes');
 const parkingRoutes = require('./routes/ParkingRoutes');
 const reservationRoutes = require('./routes/reservationRoutes');
-const cancelReservationRoutes = require('./routes/cancelReservation.route');
 const adminRoutes = require('./routes/adminRoutes');
 const passwordRoutes = require('./routes/passwordRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const userRoutes = require('./routes/userRoutes');
+const smartParkingRoutes = require('./routes/smartParkingRoutes');
+const adminAnalyticsRoutes = require('./routes/adminAnalyticsRoutes');
+
+// Bug LOW-2: production must explicitly set CORS_ORIGIN. We only allow the
+// dev fallback when NODE_ENV !== 'production'. This prevents a typo or missing
+// env var from accidentally opening the API to arbitrary localhost ports.
+function resolveCorsOrigins() {
+  if (process.env.CORS_ORIGIN) {
+    return process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('CORS_ORIGIN must be set in production (comma-separated list of allowed origins).');
+  }
+  return ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'];
+}
 
 function createApp() {
   const app = express();
   app.set('trust proxy', 1);
   app.use(cors({
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004').split(','),
+    origin: resolveCorsOrigins(),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
@@ -42,22 +57,19 @@ function createApp() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  // Bug LOW-1: single canonical route prefix. The legacy /api/* aliases were
+  // dropped so logs, rate-limit keys, and access logs all reference one path.
+  // The frontend already targets /api/v1/* via REACT_APP_API_URL.
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/parking', parkingRoutes);
+  app.use('/api/v1/parking/smart', smartParkingRoutes);
   app.use('/api/v1/reservations', reservationRoutes);
-  app.use('/api/v1/reservations', cancelReservationRoutes);
   app.use('/api/v1/admin', adminRoutes);
+  app.use('/api/v1/admin/analytics', adminAnalyticsRoutes);
   app.use('/api/v1/password', passwordRoutes);
   app.use('/api/v1/payments', paymentRoutes);
   app.use('/api/v1/notifications', notificationRoutes);
-  app.use('/api/auth', authRoutes);
-  app.use('/api/parking', parkingRoutes);
-  app.use('/api/reservations', reservationRoutes);
-  app.use('/api/reservations', cancelReservationRoutes);
-  app.use('/api/admin', adminRoutes);
-  app.use('/api/password', passwordRoutes);
-  app.use('/api/payments', paymentRoutes);
-  app.use('/api/notifications', notificationRoutes);
+  app.use('/api/v1/user', userRoutes);
 
   app.get('/health', (req, res) => {
     res.json({

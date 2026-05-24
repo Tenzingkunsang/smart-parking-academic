@@ -5,6 +5,7 @@ require('dotenv').config();
 const socketService = require('./src/services/socketService');
 const ReallocationService = require('./src/services/reallocationService');
 const jobSchedulerService = require('./src/services/jobSchedulerService');
+const { startNotificationJobs } = require('./src/services/notificationJob');
 const logger = require('./src/config/logger');
 const createApp = require('./src/app');
 
@@ -40,6 +41,7 @@ mongoose.connect(MONGODB_URI)
     logger.info('mongodb_connected');
     ReallocationService.startScheduler();
     jobSchedulerService.startScheduler();
+    startNotificationJobs();
   })
   .catch((err) => {
     logger.error('mongodb_connection_error', { message: err.message });
@@ -54,5 +56,11 @@ server.listen(PORT, () => {
     auth: `/api/v1/auth/login`,
     payments: `/api/v1/payments`,
     health: '/health',
+  });
+
+  logger.info('background_services_active', {
+    reallocationService: '1-minute precision',
+    jobSchedulerService: '1-minute precision',
+    notificationJob: 'active',
   });
 });

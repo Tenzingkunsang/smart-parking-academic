@@ -15,7 +15,16 @@ const Reservation = require('../models/Reservation');
 const ParkingSpot = require('../models/ParkingSpot');
 const ScheduledJob = require('../models/ScheduledJob');
 const AuthAuditLog = require('../models/AuthAuditLog');
+const FailedRefund = require('../models/FailedRefund');
+const userController = require('../controllers/userController');
 const { protect, adminAuth } = require('../middleware/auth');
+const logger = require('../config/logger');
+
+// ... (stats route) ...
+
+// --- FEATURE 4: ADMIN RESET VIOLATIONS ---
+router.put('/users/:id/reset-violations', protect, adminAuth, userController.resetViolations);
+// --- END ADD ---
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /admin/stats
@@ -38,7 +47,7 @@ router.get('/stats', protect, adminAuth, async (req, res) => {
       ParkingSpot.countDocuments({ reservedSpaces:  { $gt: 0 } }),
       User.countDocuments({ userType: 'user' }),
       User.countDocuments({ userType: 'admin' }),
-      Reservation.countDocuments({ status: 'reserved' }),
+      Reservation.countDocuments({ status: { $in: ['reserved', 'checked-in', 'overstay'] } }),
     ]);
 
     // Today's revenue: sum of finalAmount for completed check-outs today
@@ -61,6 +70,12 @@ router.get('/stats', protect, adminAuth, async (req, res) => {
       },
     ]);
     const todayRevenue = revenueResult.length ? revenueResult[0].total : 0;
+
+    const totalRevenueResult = await Reservation.aggregate([
+      { $match: { status: 'completed' } },
+      { $group: { _id: null, total: { $sum: '$amountInfo.finalAmount' } } },
+    ]);
+    const totalRevenue = totalRevenueResult.length ? totalRevenueResult[0].total : 0;
 
     // Total overstay revenue collected today
     const overstayResult = await Reservation.aggregate([
@@ -103,6 +118,7 @@ router.get('/stats', protect, adminAuth, async (req, res) => {
         totalAdmins,
         activeReservations,
         todayRevenue,            // base + overstay  (FIX [6])
+        totalRevenue,
         todayOverstayRevenue,    // overstay portion only
         usersWithDebt,           // users blocked from booking
         noShowCount,
@@ -255,6 +271,65 @@ router.get('/security/auth-logs', protect, adminAuth, async (req, res) => {
     return res.json({ success: true, data: logs });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bug Task-6: admin endpoints to inspect + retry failed refunds.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/refunds/failed', protect, adminAuth, async (req, res) => {
+  try {
+    const status = req.query.status;
+    const filter = status ? { status } : {};
+    const items = await FailedRefund.find(filter)
+      .populate('user', 'name email')
+      .populate('reservation', 'amountInfo paymentMethod status')
+      .sort('-createdAt')
+      .limit(200);
+    return res.json({ success: true, data: items });
+  } catch (error) {
+    logger.error('list_failed_refunds_error', { message: error.message });
+    return res.status(500).json({ success: false, message: 'Could not list failed refunds.' });
+  }
+});
+
+router.post('/refunds/failed/:id/retry', protect, adminAuth, async (req, res) => {
+  try {
+    const record = await FailedRefund.findById(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Failed refund record not found.' });
+    if (record.status === 'resolved') {
+      return res.status(400).json({ success: false, message: 'This refund is already resolved.' });
+    }
+    record.status = 'retrying';
+    record.attempts = (record.attempts || 0) + 1;
+    record.lastAttemptAt = new Date();
+    await record.save();
+
+    try {
+      const updated = await User.applyWalletDelta(record.user, {
+        amount: record.amount,
+        type: 'credit',
+        description: `Manual retry — refund for reservation ${record.reservation}`,
+      });
+      record.status = 'resolved';
+      record.resolvedAt = new Date();
+      record.resolvedBy = req.user.id;
+      await record.save();
+      return res.json({
+        success: true,
+        message: 'Refund credited to user wallet.',
+        data: { walletBalance: updated.walletBalance },
+      });
+    } catch (retryErr) {
+      record.status = 'pending';
+      record.errorMessage = retryErr.message;
+      await record.save();
+      logger.error('refund_retry_failed', { recordId: record._id?.toString(), message: retryErr.message });
+      return res.status(500).json({ success: false, message: retryErr.message });
+    }
+  } catch (error) {
+    logger.error('retry_failed_refund_error', { message: error.message });
+    return res.status(500).json({ success: false, message: 'Retry failed.' });
   }
 });
 
