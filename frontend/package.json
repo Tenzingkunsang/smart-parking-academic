@@ -60,13 +60,11 @@
     ]
   },
   "overrides": {
-    "ajv": "^6.12.6",
-    "@pmmmwh/react-refresh-webpack-plugin": {
+    "ajv": "^8.11.0",
+    "ajv-keywords": {
       "ajv": "^8.11.0"
     },
-    "workbox-build": {
-      "ajv": "^8.11.0"
-    }
+    "ajv-formats": "^2.1.1"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.17",

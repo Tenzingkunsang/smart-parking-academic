@@ -1,38 +1,71 @@
 /**
- * patch-ajv.js — postinstall patch for react-scripts@5 + ajv@8 compatibility.
- *
- * react-scripts@5 bundles webpack loaders (babel-loader, file-loader,
- * fork-ts-checker-webpack-plugin) that each carry their own nested
- * ajv-keywords@3.x. That version's _formatLimit.js reads `ajv._formats`
- * which is undefined in ajv@8, causing a TypeError at webpack startup.
- *
- * Fix: guard the assignment so missing _formats defaults to {}.
+ * patch-ajv.js — robust postinstall patch for react-scripts@5 + ajv@8 compatibility.
  */
 'use strict';
-const { execSync } = require('child_process');
 const fs = require('fs');
+const path = require('path');
 
-try {
-  const raw = execSync(
-    "find node_modules -name '_formatLimit.js' -not -path '*/dotjs/*' 2>/dev/null"
-  ).toString().trim();
+function getAllFiles(dirPath, arrayOfFiles) {
+  const files = fs.readdirSync(dirPath);
+  arrayOfFiles = arrayOfFiles || [];
 
-  const files = raw.split('\n').filter(Boolean);
-
-  files.forEach(f => {
-    try {
-      const content = fs.readFileSync(f, 'utf8');
-      if (!content.includes('var formats = ajv._formats;')) return; // already patched or different version
-      const patched = content.replace(
-        'var formats = ajv._formats;',
-        'var formats = ajv._formats || {};'
-      );
-      fs.writeFileSync(f, patched);
-      console.log('[patch-ajv] patched', f);
-    } catch (e) {
-      // Non-fatal — missing one file doesn't break others
+  files.forEach(function(file) {
+    if (fs.statSync(dirPath + "/" + file).isDirectory()) {
+      arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles);
+    } else {
+      arrayOfFiles.push(path.join(dirPath, "/", file));
     }
   });
+
+  return arrayOfFiles;
+}
+
+console.log('[patch-ajv] Starting patch process...');
+
+try {
+  const nodeModulesPath = path.join(__dirname, '..', 'node_modules');
+  if (!fs.existsSync(nodeModulesPath)) {
+    console.log('[patch-ajv] node_modules not found at', nodeModulesPath);
+    process.exit(0);
+  }
+
+  // Find all _formatLimit.js files in ajv-keywords packages
+  const allFiles = getAllFiles(nodeModulesPath);
+  const targetFiles = allFiles.filter(f => 
+    f.endsWith('_formatLimit.js') && 
+    f.includes('ajv-keywords') && 
+    !f.includes('dotjs')
+  );
+
+  console.log(`[patch-ajv] Found ${targetFiles.length} files to check.`);
+
+  targetFiles.forEach(f => {
+    try {
+      const content = fs.readFileSync(f, 'utf8');
+      
+      // Look for the problematic line. 
+      // In ajv-keywords 3.x, it's usually 'var formats = ajv._formats;'
+      // We want to change it to 'var formats = ajv._formats || {};'
+      
+      if (content.includes('var formats = ajv._formats;') && !content.includes('var formats = ajv._formats || {};')) {
+        const patched = content.replace(
+          'var formats = ajv._formats;',
+          'var formats = ajv._formats || {};'
+        );
+        fs.writeFileSync(f, patched);
+        console.log('[patch-ajv] Patched:', f);
+      } else if (content.includes('var formats = ajv._formats || {};')) {
+        console.log('[patch-ajv] Already patched:', f);
+      } else {
+        // Check for other variants or if it's already using a safer pattern
+        console.log('[patch-ajv] Skipping (no match):', f);
+      }
+    } catch (e) {
+      console.error(`[patch-ajv] Error processing ${f}:`, e.message);
+    }
+  });
+
+  console.log('[patch-ajv] Patch process completed.');
 } catch (e) {
-  // find not available or no node_modules yet — skip silently
+  console.error('[patch-ajv] Critical error:', e.message);
 }

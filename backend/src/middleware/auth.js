@@ -7,7 +7,7 @@ const User = require('../models/User');
 // This also means a misconfigured server refuses to start rather than serving
 // 401s on every request until someone notices the logs.
 const _JWT_SECRET = (() => {
-  const secret = process.env.JWT_SECRET;
+  const secret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test-secret' : null);
   if (!secret) {
     throw new Error('JWT_SECRET environment variable is not set. Server cannot start securely.');
   }

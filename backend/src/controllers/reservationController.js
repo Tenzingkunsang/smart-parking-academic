@@ -317,9 +317,13 @@ exports.checkOut = async (req, res) => {
     updateSpotStatusFlags(spot);
     await spot.save();
     await reservation.save();
-
     if (billing.overstayCharge > 0) {
-      await User.findByIdAndUpdate(reservation.user, { $inc: { overstayDebt: billing.overstayCharge } });
+      await User.applyWalletDelta(reservation.user, {
+        amount: billing.overstayCharge,
+        type: 'debit',
+        description: `Overstay charge for reservation ${reservation._id}`,
+      });
+
       try {
         await notificationService.sendNotification(
           reservation.user,
@@ -347,7 +351,7 @@ exports.checkOut = async (req, res) => {
     });
   } catch (error) {
     logger.error('checkout_error', { message: error.message });
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    res.status(500).json({ success: false, message: 'Server error during check-out' });
   }
 };
 
@@ -507,10 +511,16 @@ exports.adminCheckOut = async (req, res) => {
     setImmediate(async () => {
       // Bug C4 alignment: track overstay debt on admin path.
       if (billing.overstayCharge > 0) {
-        try { await User.findByIdAndUpdate(reservation.user._id, { $inc: { overstayDebt: billing.overstayCharge } }); }
-        catch (e) { logger.error('admin_checkout_debt_update_failed', { message: e.message }); }
-      }
-      try { await recalculateUserBehavior(reservation.user._id); } catch (e) { logger.error('admin_checkout_behavior_failed', { message: e.message }); }
+       try {
+         await User.applyWalletDelta(reservation.user._id, {
+           amount: billing.overstayCharge,
+           type: 'debit',
+           description: `Admin check-out overstay charge for reservation ${reservation._id}`,
+         });
+       } catch (e) {
+         logger.error('admin_checkout_debt_update_failed', { message: e.message });
+       }
+      }      try { await recalculateUserBehavior(reservation.user._id); } catch (e) { logger.error('admin_checkout_behavior_failed', { message: e.message }); }
       try {
         const msg = billing.overstayCharge > 0
           ? `Admin has checked you out. You parked for ${billing.actualMinutes} min (${billing.overstayMinutes} min overstay). Overstay charge: NPR ${billing.overstayCharge}. Total: NPR ${billing.finalAmount}.`

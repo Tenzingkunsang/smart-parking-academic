@@ -59,12 +59,22 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+const getStoredUser = () => {
+  try {
+    const userStr = localStorage.getItem('user');
+    return userStr ? JSON.parse(userStr) : {};
+  } catch (e) {
+    console.error('Error parsing user from localStorage:', e);
+    return {};
+  }
+};
+
 const AdminRoute = ({ children }) => {
   if (!isTokenValid()) {
     clearAuthStorage();
     return <Navigate to="/login" replace />;
   }
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const user = getStoredUser();
   if (user.userType !== 'admin') {
     return <Navigate to="/parking" replace />;
   }
@@ -76,7 +86,7 @@ const BusinessRoute = ({ children }) => {
     clearAuthStorage();
     return <Navigate to="/login" replace />;
   }
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const user = getStoredUser();
   if (user.userType !== 'business_owner' && user.userType !== 'admin') {
     return <Navigate to="/parking" replace />;
   }
