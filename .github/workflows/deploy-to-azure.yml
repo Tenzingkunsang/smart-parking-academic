@@ -21,16 +21,16 @@ jobs:
 
       # ── 1. Build React frontend ──────────────────────────────────────────────
       - name: Install frontend dependencies
-        run: npm install
         working-directory: frontend
+        run: npm install --no-audit --no-fund
 
       - name: Build frontend
-        run: npm run build --if-present
         working-directory: frontend
         env:
           REACT_APP_API_URL: https://smartparknepal.azurewebsites.net/api/v1
           REACT_APP_SOCKET_URL: https://smartparknepal.azurewebsites.net
           GENERATE_SOURCEMAP: 'false'
+        run: npm run build
 
       # ── 2. Copy React build into backend/public (Express serves it) ──────────
       - name: Copy frontend build into backend/public
@@ -40,8 +40,8 @@ jobs:
 
       # ── 3. Install backend production dependencies ────────────────────────────
       - name: Install backend dependencies
-        run: npm install
         working-directory: backend
+        run: npm install --omit=dev --no-audit --no-fund
 
       # ── 4. Deploy to Azure App Service via Publish Profile ───────────────────
       - name: Deploy to Azure Web App
