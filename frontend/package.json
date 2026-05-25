@@ -58,6 +58,9 @@
       "last 1 safari version"
     ]
   },
+  "overrides": {
+    "ajv": "^8.11.0"
+  },
   "devDependencies": {
     "autoprefixer": "^10.4.17",
     "cross-env": "^10.1.0",
