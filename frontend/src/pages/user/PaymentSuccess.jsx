@@ -17,6 +17,14 @@ const PaymentSuccess = () => {
         const pidx = searchParams.get('pidx');
         const reservationId = searchParams.get('reservationId') || searchParams.get('purchase_order_id');
 
+        // Khalti GET redirect sends ?error=... when payment fails or is incomplete.
+        // Show that message directly instead of "Callback data integrity violation".
+        const callbackError = searchParams.get('error');
+        if (callbackError) {
+          setError(decodeURIComponent(callbackError));
+          return;
+        }
+
         if (!token) {
           setError('Authentication required for verification.');
           return;

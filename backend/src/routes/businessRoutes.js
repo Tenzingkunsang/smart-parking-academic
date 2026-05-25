@@ -102,6 +102,7 @@ router.get('/stats', protect, businessOwnerAuth, async (req, res) => {
       totalRevenueResult,
       overstayResult,
       noShowCount,
+      completedTodayCount,
       peakUsageByHour,
       topSpots,
     ] = await Promise.all([
@@ -120,9 +121,31 @@ router.get('/stats', protect, businessOwnerAuth, async (req, res) => {
         { $group: { _id: null, total: { $sum: '$overstayInfo.overstayCharge' } } },
       ]),
       Reservation.countDocuments({ parkingSpot: { $in: spotIds }, status: 'no-show' }),
+      // completedToday: checkouts processed today (used by BusinessDashboard stat card)
+      Reservation.countDocuments({ parkingSpot: { $in: spotIds }, status: 'completed', checkOutTime: { $gte: today, $lt: tomorrow } }),
       Reservation.aggregate([
         { $match: { parkingSpot: { $in: spotIds }, checkInTime: { $ne: null } } },
-        { $group: { _id: { $hour: '$checkInTime' }, count: { $sum: 1 } } },
+        // Return formatted hour label (e.g. "2 PM") so the dashboard chart is readable
+        { $group: {
+          _id: { $hour: '$checkInTime' },
+          count: { $sum: 1 },
+        }},
+        { $project: {
+          _id: 0,
+          hour: '$_id',
+          // Format: 0→"12 AM", 12→"12 PM", 13→"1 PM", etc.
+          label: { $cond: [
+            { $eq: ['$_id', 0] }, '12 AM',
+            { $cond: [
+              { $lt: ['$_id', 12] }, { $concat: [{ $toString: '$_id' }, ' AM'] },
+              { $cond: [
+                { $eq: ['$_id', 12] }, '12 PM',
+                { $concat: [{ $toString: { $subtract: ['$_id', 12] } }, ' PM'] },
+              ]},
+            ]},
+          ]},
+          count: 1,
+        }},
         { $sort: { count: -1 } },
         { $limit: 5 },
       ]),
@@ -134,6 +157,9 @@ router.get('/stats', protect, businessOwnerAuth, async (req, res) => {
       ]),
     ]);
 
+    // Remap peakUsageByHour so chart uses `_id` field = label string (dashboard reads h._id)
+    const peakUsageFormatted = peakUsageByHour.map((h) => ({ _id: h.label, count: h.count }));
+
     res.json({
       success: true,
       data: {
@@ -143,7 +169,8 @@ router.get('/stats', protect, businessOwnerAuth, async (req, res) => {
         totalRevenue:         totalRevenueResult[0]?.total || 0,
         todayOverstayRevenue: overstayResult[0]?.total || 0,
         noShowCount,
-        peakUsageByHour,
+        completedToday:       completedTodayCount,
+        peakUsageByHour:      peakUsageFormatted,
         topSpots,
       },
     });

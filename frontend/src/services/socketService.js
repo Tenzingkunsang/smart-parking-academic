@@ -1,8 +1,9 @@
 import { io } from 'socket.io-client';
-import { API_BASE } from '../config/api';
+import { getSocketOrigin } from '../config/api';
 
-// This connects to your backend (usually http://localhost:5000)
-const SOCKET_URL = API_BASE.replace('/api', ''); 
+// Derives origin from REACT_APP_API_URL — strips path, keeps protocol+host only.
+// e.g. 'https://smartparknepal.azurewebsites.net/api/v1' → 'https://smartparknepal.azurewebsites.net'
+const SOCKET_URL = getSocketOrigin();
 
 class SocketService {
   constructor() {
