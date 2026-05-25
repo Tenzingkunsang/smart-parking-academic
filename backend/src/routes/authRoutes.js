@@ -326,15 +326,18 @@ router.post('/google', async (req, res) => {
     let user = await User.findOne({ $or: [{ googleId }, { email: normalizedEmail }] });
 
     if (!user) {
-      user = await User.create({
-        name: name || normalizedEmail,
+      // New Google user — request role selection before creating account.
+      // Issue a short-lived pending token (10 min) containing the Google payload.
+      const pendingToken = jwt.sign(
+        { type: 'google_pending', googleId, email: normalizedEmail, name, picture },
+        getJwtSecret(),
+        { expiresIn: '10m' }
+      );
+      return res.json({
+        success: true,
+        roleSelectionRequired: true,
+        pendingToken,
         email: normalizedEmail,
-        googleId,
-        picture,
-        authMethod: 'google',
-        userType: 'user', // ─── FIX: no admin-by-email backdoor
-        googleEmailVerified: true,
-        isActive: true,
       });
     } else {
       if (!user.googleId) {
@@ -474,6 +477,79 @@ router.post('/google/verify-code', async (req, res) => {
   } catch (error) {
     logger.error('verify_google_code_failed', { message: error.message });
     return res.status(500).json({ success: false, message: 'Failed to verify code' });
+  }
+});
+
+// @route   POST /api/auth/google/complete-registration
+// Called after role-selection screen for new Google users.
+// Verifies the 10-min pending token, then creates the account with the chosen role.
+router.post('/google/complete-registration', async (req, res) => {
+  try {
+    const { pendingToken, userType: requestedType } = req.body;
+    if (!pendingToken) {
+      return res.status(400).json({ success: false, message: 'pendingToken is required' });
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(pendingToken, getJwtSecret());
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: 'Google session expired. Please sign in with Google again.',
+      });
+    }
+
+    if (payload.type !== 'google_pending') {
+      return res.status(401).json({ success: false, message: 'Invalid token type' });
+    }
+
+    const ALLOWED = ['user', 'business_owner'];
+    const resolvedType = ALLOWED.includes(requestedType) ? requestedType : 'user';
+    const { googleId, email, name, picture } = payload;
+
+    // Guard: user may have been created by a concurrent request
+    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+    if (user) {
+      // Already exists (race) — just attach googleId if missing and log in
+      if (!user.googleId) { user.googleId = googleId; user.authMethod = 'google'; }
+      if (picture) user.picture = picture;
+      await user.save();
+    } else {
+      user = await User.create({
+        name: name || email,
+        email,
+        googleId,
+        picture,
+        authMethod: 'google',
+        userType: resolvedType,
+        googleEmailVerified: true,
+        isActive: true,
+      });
+    }
+
+    const refreshPayload = await generateRefreshToken(user, req);
+    await logAuthEvent({ userId: user._id, event: 'register_success', req });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Account created successfully',
+      token: generateAccessToken(user._id),
+      refreshToken: refreshPayload.token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        vehicleNumber: user.vehicleNumber,
+        userType: user.userType,
+        authMethod: user.authMethod,
+        picture,
+      },
+    });
+  } catch (error) {
+    logger.error('google_complete_registration_failed', { message: error.message });
+    res.status(500).json({ success: false, message: 'Registration failed. Please try again.' });
   }
 });
 

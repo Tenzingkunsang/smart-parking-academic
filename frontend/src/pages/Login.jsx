@@ -1,10 +1,33 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
-import { AlertCircle, CheckCircle2, Loader2, ArrowLeft, Mail, ShieldCheck, Zap } from 'lucide-react';
+import { AlertCircle, Loader2, ArrowLeft, Mail, Car, Building2, ArrowRight, ShieldCheck } from 'lucide-react';
 import { API_BASE } from '../config/api';
 import AuthLayout from '../components/AuthLayout';
 import Button from '../components/ui/Button';
+
+// ─── Role cards (same as Register.jsx) ───────────────────────────────────────
+const GOOGLE_ROLES = [
+  {
+    value: 'user',
+    label: 'Parker',
+    description: 'Find and book parking spots near you. Manage reservations and track sessions.',
+    icon: Car,
+    accent: 'cyan',
+  },
+  {
+    value: 'business_owner',
+    label: 'Business Owner',
+    description: 'List and manage your parking spaces. Accept bookings and track revenue.',
+    icon: Building2,
+    accent: 'violet',
+  },
+];
+
+const accentClasses = {
+  cyan:   { border: 'border-cyan-400',   bg: 'bg-cyan-400/10',   text: 'text-cyan-400',   ring: 'ring-cyan-400/30'   },
+  violet: { border: 'border-violet-400', bg: 'bg-violet-400/10', text: 'text-violet-400', ring: 'ring-violet-400/30' },
+};
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -12,7 +35,25 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  // Google role-selection state (new users only)
+  const [pendingGoogleToken, setPendingGoogleToken] = useState(null);
+  const [googleUserEmail, setGoogleUserEmail] = useState('');
+
   const navigate = useNavigate();
+
+  const redirectByRole = (userType) => {
+    window.location.href =
+      userType === 'admin'          ? '/admin'    :
+      userType === 'business_owner' ? '/business' : '/';
+  };
+
+  const storeAuth = (data) => {
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('authToken', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,17 +67,12 @@ const Login = () => {
       });
       const data = await response.json();
       if (data.success) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('authToken', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-        window.location.href =
-          data.user.userType === 'admin'          ? '/admin'    :
-          data.user.userType === 'business_owner' ? '/business' : '/';
+        storeAuth(data);
+        redirectByRole(data.user.userType);
       } else {
         setError(data.message || 'Invalid email or password.');
       }
-    } catch (err) {
+    } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
@@ -45,6 +81,7 @@ const Login = () => {
 
   const handleGoogleSuccess = async (credentialResponse) => {
     setGoogleLoading(true);
+    setError('');
     try {
       const response = await fetch(`${API_BASE}/auth/google`, {
         method: 'POST',
@@ -52,16 +89,19 @@ const Login = () => {
         body: JSON.stringify({ credential: credentialResponse.credential })
       });
       const data = await response.json();
-      if (data.success) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('authToken', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-        const dest =
-          data.user.userType === 'admin'          ? '/admin'    :
-          data.user.userType === 'business_owner' ? '/business' : '/';
-        navigate(dest);
+      if (!data.success) {
+        setError(data.message || 'Google sign-in failed. Please try again.');
+        return;
       }
+      // New user — backend needs role before creating account
+      if (data.roleSelectionRequired) {
+        setPendingGoogleToken(data.pendingToken);
+        setGoogleUserEmail(data.email || '');
+        return;
+      }
+      // Existing user — log in directly
+      storeAuth(data);
+      redirectByRole(data.user.userType);
     } catch {
       setError('Google sign-in failed. Please try again.');
     } finally {
@@ -69,6 +109,89 @@ const Login = () => {
     }
   };
 
+  const handleGoogleRoleSelect = async (userType) => {
+    setGoogleLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/auth/google/complete-registration`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pendingToken: pendingGoogleToken, userType }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        storeAuth(data);
+        redirectByRole(data.user.userType);
+      } else {
+        setError(data.message || 'Registration failed. Please try again.');
+        setPendingGoogleToken(null);
+      }
+    } catch {
+      setError('Network error. Please try again.');
+      setPendingGoogleToken(null);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  // ─── Google role-selection screen ─────────────────────────────────────────
+  if (pendingGoogleToken) {
+    return (
+      <AuthLayout title="One More Step" subtitle={`Signed in as ${googleUserEmail}. Choose your account type.`}>
+        {error && (
+          <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-start gap-3 text-red-400 text-xs font-bold">
+            <AlertCircle size={16} className="shrink-0 mt-0.5" /> <span>{error}</span>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {GOOGLE_ROLES.map((role) => {
+            const Icon = role.icon;
+            const ac = accentClasses[role.accent];
+            return (
+              <button
+                key={role.value}
+                onClick={() => handleGoogleRoleSelect(role.value)}
+                disabled={googleLoading}
+                className={`w-full text-left p-6 rounded-2xl bg-white/[0.03] border border-white/[0.08] hover:border-white/20 hover:bg-white/[0.06] transition-all group flex items-start gap-5 ring-0 hover:ring-1 ${ac.ring} focus:outline-none disabled:opacity-50`}
+              >
+                <div className={`w-12 h-12 rounded-xl ${ac.bg} border ${ac.border}/30 flex items-center justify-center shrink-0 ${ac.text} group-hover:scale-105 transition-transform`}>
+                  <Icon size={22} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-base font-black text-white">{role.label}</span>
+                    {googleLoading
+                      ? <Loader2 size={16} className="text-slate-500 animate-spin shrink-0" />
+                      : <ArrowRight size={16} className="text-slate-600 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" />
+                    }
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">{role.description}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Business owner verification note */}
+        <div className="mt-6 flex items-start gap-3 p-4 rounded-2xl bg-violet-500/[0.06] border border-violet-500/20">
+          <ShieldCheck size={16} className="text-violet-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Business Owner accounts require <span className="text-violet-300 font-bold">admin verification</span> before listing spots.
+          </p>
+        </div>
+
+        <button
+          onClick={() => { setPendingGoogleToken(null); setError(''); }}
+          className="mt-6 flex items-center gap-2 text-slate-500 hover:text-white transition-colors text-xs font-bold"
+        >
+          <ArrowLeft size={14} /> Back to sign in
+        </button>
+      </AuthLayout>
+    );
+  }
+
+  // ─── Normal login screen ───────────────────────────────────────────────────
   return (
     <AuthLayout title="Welcome Back" subtitle="Sign in to your SmartPark account.">
 
