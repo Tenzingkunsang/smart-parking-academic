@@ -19,45 +19,34 @@ jobs:
         with:
           node-version: '22'
 
-      # ── 1. Build React frontend ─────────────────────────────────────────────
+      # ── 1. Build React frontend ──────────────────────────────────────────────
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm install
         working-directory: frontend
 
       - name: Build frontend
+        run: npm run build --if-present
+        working-directory: frontend
         env:
           REACT_APP_API_URL: https://smartparknepal.azurewebsites.net/api/v1
           REACT_APP_SOCKET_URL: https://smartparknepal.azurewebsites.net
           GENERATE_SOURCEMAP: 'false'
-        run: npm run build
-        working-directory: frontend
 
-      # ── 2. Place React build inside backend/public ──────────────────────────
+      # ── 2. Copy React build into backend/public (Express serves it) ──────────
       - name: Copy frontend build into backend/public
         run: |
           rm -rf backend/public
           cp -r frontend/build backend/public
 
-      # ── 3. Install backend production deps ─────────────────────────────────
-      - name: Install backend dependencies (prod only)
-        run: npm ci --omit=dev
+      # ── 3. Install backend production dependencies ────────────────────────────
+      - name: Install backend dependencies
+        run: npm install
         working-directory: backend
 
-      # ── 4. Zip backend (includes node_modules + public/) ───────────────────
-      - name: Create deployment package
-        run: |
-          cd backend
-          zip -r ../deploy.zip . \
-            --exclude "*.test.js" \
-            --exclude "__tests__/*" \
-            --exclude ".env*"
-
-      # ── 5. Deploy zip to App Service (no AZURE_CREDENTIALS needed) ─────────
-      # Uses the publish profile downloaded from Azure Portal / CLI.
-      # No Azure AD service-principal required — works on student subscriptions.
+      # ── 4. Deploy to Azure App Service via Publish Profile ───────────────────
       - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
+        uses: azure/webapps-deploy@v2
         with:
           app-name: 'smartparknepal'
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: 'deploy.zip'
+          package: './backend'
