@@ -11,39 +11,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ── 0. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      # ── 1. Node 22 ───────────────────────────────────────────────────────────
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # ── 1. Build React frontend ──────────────────────────────────────────────
+      # ── 2. Install frontend deps ──────────────────────────────────────────────
+      - name: Install frontend dependencies
+        run: npm install --legacy-peer-deps
+        working-directory: frontend
+
+      # ── 3. Build React app ────────────────────────────────────────────────────
       - name: Build frontend
-        run: |
-          cd frontend
-          npm install
-          npm run build
+        run: npm run build
+        working-directory: frontend
         env:
+          CI: 'false'
+          GENERATE_SOURCEMAP: 'false'
           REACT_APP_API_URL: https://smartparknepal.azurewebsites.net/api/v1
           REACT_APP_SOCKET_URL: https://smartparknepal.azurewebsites.net
-          GENERATE_SOURCEMAP: 'false'
-          CI: 'false'
 
-      # ── 2. Move React build into backend/public ──────────────────────────────
-      - name: Sync frontend build into backend/public
+      # ── 4. Copy build output into backend/public ──────────────────────────────
+      - name: Copy frontend build into backend/public
         run: |
           mkdir -p backend/public
           cp -r frontend/build/. backend/public/
 
-      # ── 3. Install backend production dependencies ────────────────────────────
-      - name: Install backend dependencies
-        run: |
-          cd backend
-          npm install --production
-
-      # ── 4. Deploy backend folder to Azure App Service ────────────────────────
+      # ── 5. Deploy ./backend to Azure (Oryx runs npm install on the server) ────
+      # node_modules are intentionally excluded — Azure App Service (Oryx) detects
+      # package.json at the zip root and runs `npm install --production` server-side.
+      # This keeps the upload small and avoids zip-size timeouts.
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
