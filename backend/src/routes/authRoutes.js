@@ -77,10 +77,15 @@ router.post(
   validateRequest,
   async (req, res) => {
     try {
-      const { name, email, password, phone, vehicleNumber } = req.body;
+      const { name, email, password, phone, vehicleNumber, userType: requestedType } = req.body;
       const normalizedEmail = (email || '').trim().toLowerCase();
       const normalizedPhone = (phone || '').trim();
       const normalizedVehicle = (vehicleNumber || '').trim();
+
+      // Only 'user' and 'business_owner' are self-registrable.
+      // 'admin' must be seeded — never assignable via API.
+      const ALLOWED_SELF_REGISTER_TYPES = ['user', 'business_owner'];
+      const resolvedType = ALLOWED_SELF_REGISTER_TYPES.includes(requestedType) ? requestedType : 'user';
 
       if (!password) {
         return res.status(400).json({ success: false, message: 'Password is required for email registration' });
@@ -105,8 +110,8 @@ router.post(
         email: normalizedEmail,
         password,
         phone: normalizedPhone,
-        vehicleNumber: normalizedVehicle,
-        userType: 'user', // ─── FIX: never assign admin via email string
+        vehicleNumber: resolvedType === 'user' ? normalizedVehicle : '',
+        userType: resolvedType,
         authMethod: 'email',
       });
 
