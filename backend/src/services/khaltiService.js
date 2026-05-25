@@ -10,6 +10,7 @@
  */
 
 const axios = require('axios');
+const logger = require('../config/logger');
 
 const TIMEOUT_MS = 15_000; // 15 seconds — never let a payment request hang
 
@@ -93,7 +94,7 @@ class KhaltiService {
 
       const response = await this._getClient().post('/epayment/initiate/', payload);
 
-      console.log(`[Khalti] Payment initiated | order: ${payload.purchase_order_id} | mode: ${this.mode}`);
+      logger.info('khalti_payment_initiated', { orderId: payload.purchase_order_id, mode: this.mode });
 
       return {
         success: true,
@@ -104,7 +105,7 @@ class KhaltiService {
       };
     } catch (error) {
       const message = this._parseError(error);
-      console.error(`[Khalti] initiatePayment failed | order: ${payload.purchase_order_id} | ${message}`);
+      logger.error('khalti_initiate_failed', { orderId: payload.purchase_order_id, message });
       return { success: false, message };
     }
   }
@@ -132,14 +133,17 @@ class KhaltiService {
       const d = response.data;
 
       if (d.status !== 'Completed') {
-        console.warn(`[Khalti] Payment not completed | pidx: ${pidx} | status: ${d.status}`);
+        logger.warn('khalti_payment_not_completed', { pidx, status: d.status });
         return {
           success: false,
+          // Distinguish transient states from hard failures so callers can decide
+          // whether to mark paymentStatus='failed' or leave it retryable.
+          status: d.status, // 'Initiated' | 'Pending' | 'Refunded' | 'Expired' | 'User canceled'
           message: `Payment status is "${d.status}". Expected "Completed".`,
         };
       }
 
-      console.log(`[Khalti] Payment verified | pidx: ${pidx} | txn: ${d.transaction_id}`);
+      logger.info('khalti_payment_verified', { pidx, transactionId: d.transaction_id });
 
       return {
         success: true,
@@ -152,7 +156,7 @@ class KhaltiService {
       };
     } catch (error) {
       const message = this._parseError(error);
-      console.error(`[Khalti] verifyPayment failed | pidx: ${pidx} | ${message}`);
+      logger.error('khalti_verify_failed', { pidx, message });
       return { success: false, message };
     }
   }
@@ -178,7 +182,7 @@ class KhaltiService {
         amount: amountPaisa,
       });
 
-      console.log(`[Khalti] Refund initiated | txn: ${transactionId} | amount: NPR ${amountNPR}`);
+      logger.info('khalti_refund_initiated', { transactionId, amountNPR });
 
       return {
         success: true,
@@ -188,7 +192,7 @@ class KhaltiService {
       };
     } catch (error) {
       const message = this._parseError(error);
-      console.error(`[Khalti] refundPayment failed | txn: ${transactionId} | ${message}`);
+      logger.error('khalti_refund_failed', { transactionId, message });
       return { success: false, message };
     }
   }

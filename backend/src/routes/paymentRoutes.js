@@ -227,23 +227,21 @@ router.post(
       const verification = await khaltiService.verifyPayment(pidx);
 
       if (!verification.success) {
-        reservation.paymentStatus = 'failed';
-        reservation.paymentMethod = 'khalti';
-        await reservation.save();
+        // Transient states (Initiated, Pending) = user hasn't completed on Khalti's side yet.
+        // Keep paymentStatus as 'pending' so user can retry. Only hard failures get 'failed'.
+        const TRANSIENT = ['Initiated', 'Pending'];
+        const isTransient = TRANSIENT.includes(verification.status);
+        if (!isTransient) {
+          reservation.paymentStatus = 'failed';
+          reservation.paymentMethod = 'khalti';
+          await reservation.save();
+        }
         return res.status(400).json({
           success: false,
-          // ─── FIX #19: Descriptive message ─────────────────────────────
-          message: verification.message || 'Payment verification failed. Please contact support if money was deducted.',
-        });
-      }
-
-      if (verification.data?.status !== 'Completed') {
-        reservation.paymentStatus = 'failed';
-        reservation.paymentMethod = 'khalti';
-        await reservation.save();
-        return res.status(400).json({
-          success: false,
-          message: `Payment not completed. Khalti status: "${verification.data?.status}". No charges were made.`,
+          retryable: isTransient,
+          message: isTransient
+            ? `Payment not yet complete (status: "${verification.status}"). Please wait and try again.`
+            : (verification.message || 'Payment verification failed. Please contact support if money was deducted.'),
         });
       }
 
@@ -338,17 +336,17 @@ router.get(
       const verification = await khaltiService.verifyPayment(pidx);
 
       if (!verification.success) {
-        reservation.paymentStatus = 'failed';
-        reservation.paymentMethod = 'khalti';
-        await reservation.save();
-        return res.redirect(`${frontendUrl}/payment-success?reservationId=${reservationId}&error=${encodeURIComponent(verification.message || 'Payment verification failed.')}`);
-      }
-
-      if (verification.data?.status !== 'Completed') {
-        reservation.paymentStatus = 'failed';
-        reservation.paymentMethod = 'khalti';
-        await reservation.save();
-        return res.redirect(`${frontendUrl}/payment-success?reservationId=${reservationId}&error=${encodeURIComponent(`Payment status is "${verification.data?.status}". Expected "Completed".`)}`);
+        const TRANSIENT = ['Initiated', 'Pending'];
+        const isTransient = TRANSIENT.includes(verification.status);
+        if (!isTransient) {
+          reservation.paymentStatus = 'failed';
+          reservation.paymentMethod = 'khalti';
+          await reservation.save();
+        }
+        const errMsg = isTransient
+          ? `Payment not yet complete (status: "${verification.status}"). Please wait and retry.`
+          : (verification.message || 'Payment verification failed.');
+        return res.redirect(`${frontendUrl}/payment-success?reservationId=${reservationId}&error=${encodeURIComponent(errMsg)}`);
       }
 
       if (reservation.status === 'pending') {

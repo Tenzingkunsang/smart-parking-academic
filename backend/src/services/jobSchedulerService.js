@@ -161,21 +161,29 @@ async function runPendingJobs() {
 async function checkExpiredSessions() {
   try {
     const now = new Date();
-    // Find all 'checked-in' reservations where estimatedCheckOut < now
-    const expired = await Reservation.find({
-      status: 'checked-in',
-      'activeSession.estimatedCheckOut': { $lt: now }
-    }).populate('parkingSpot', 'spotNumber locationName price');
 
-    if (expired.length === 0) return;
+    // Use findOneAndUpdate with status filter so two overlapping cron ticks cannot
+    // both transition the same reservation to overstay (atomic state machine).
+    // Pull up to 50 in one batch; subsequent ticks handle any remainder.
+    const expiredIds = await Reservation.find({
+      status: 'checked-in',
+      'activeSession.estimatedCheckOut': { $lt: now },
+    }).select('_id').lean().limit(50);
+
+    if (expiredIds.length === 0) return;
 
     const io = socketService.getIo();
 
-    for (const res of expired) {
-      // Mark as overstay
-      res.status = 'overstay';
-      res.lifecycleStage = 'overstay';
-      await res.save();
+    for (const { _id } of expiredIds) {
+      // Only this cron tick wins if status is still 'checked-in'; another tick
+      // that races here will get null and skip gracefully.
+      const res = await Reservation.findOneAndUpdate(
+        { _id, status: 'checked-in' },
+        { $set: { status: 'overstay', lifecycleStage: 'overstay' } },
+        { new: true }
+      ).populate('parkingSpot', 'spotNumber locationName price');
+
+      if (!res) continue; // already processed by concurrent tick
 
       const spotNum = res.parkingSpot?.spotNumber || '?';
       const overstayRate = res.parkingSpot?.price
