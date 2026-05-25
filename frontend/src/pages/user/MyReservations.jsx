@@ -1,18 +1,134 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import toast from 'react-hot-toast';
-import { Search, MapPin, Calendar, Clock, CreditCard, ChevronRight, AlertTriangle, ShieldCheck, Ticket, XCircle, CheckCircle2, Loader2, Info, ArrowRight, History, Download, ChevronDown, ChevronUp, Wallet } from 'lucide-react';
+import { Search, MapPin, Calendar, Clock, CreditCard, ChevronRight, AlertTriangle, ShieldCheck, Ticket, XCircle, CheckCircle2, Loader2, Info, ArrowRight, History, Download, ChevronDown, ChevronUp, Wallet, MessageSquare, Send, X } from 'lucide-react';
 import { API_BASE, handleAuthExpiry } from '../../config/api';
 import CountdownTimer from '../../components/common/CountdownTimer';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+
+// ─── Chat Modal ────────────────────────────────────────────────────────────────
+
+const ChatModal = ({ reservation, onClose }) => {
+  const [messages, setMessages]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [input, setInput]         = useState('');
+  const [sending, setSending]     = useState(false);
+  const bottomRef = useRef(null);
+
+  const token = () => localStorage.getItem('token');
+  const hdr   = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
+
+  const fetchMessages = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE}/messages/reservation/${reservation._id}`, { headers: hdr() });
+      const d = await r.json();
+      if (d.success) setMessages(d.data || []);
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }, [reservation._id]);
+
+  useEffect(() => { fetchMessages(); }, [fetchMessages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+    setSending(true);
+    try {
+      const r = await fetch(`${API_BASE}/messages/reservation/${reservation._id}`, {
+        method: 'POST', headers: hdr(), body: JSON.stringify({ content: input.trim() }),
+      });
+      const d = await r.json();
+      if (d.success) { setInput(''); fetchMessages(); }
+      else toast.error(d.message || 'Failed to send.');
+    } catch { toast.error('Network error.'); }
+    finally { setSending(false); }
+  };
+
+  const venue = reservation.parkingSpot?.locationName || 'Venue';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-[#0c0c0e] border border-white/[0.08] rounded-2xl shadow-2xl flex flex-col" style={{ height: '70vh', maxHeight: 520 }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+              <MessageSquare size={14} className="text-cyan-400" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white">{venue}</p>
+              <p className="text-[10px] text-slate-500">Message the venue</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-xl bg-white/5 border border-white/[0.08] flex items-center justify-center text-slate-400 hover:text-white transition-all">
+            <X size={13} />
+          </button>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {loading ? (
+            <div className="flex justify-center py-8"><Loader2 className="animate-spin text-cyan-400" size={22} /></div>
+          ) : messages.length === 0 ? (
+            <div className="text-center py-10 space-y-2">
+              <MessageSquare size={28} className="text-slate-700 mx-auto" />
+              <p className="text-slate-600 text-sm">No messages yet. Say hello to the venue!</p>
+            </div>
+          ) : messages.map((msg) => {
+            const isMe = msg.senderRole === 'user';
+            return (
+              <div key={msg._id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                <div className="max-w-[78%] space-y-1">
+                  <div className={`px-3.5 py-2.5 rounded-2xl text-sm ${
+                    isMe
+                      ? 'bg-cyan-500/20 border border-cyan-500/25 text-white rounded-br-sm'
+                      : 'bg-white/[0.05] border border-white/[0.08] text-slate-300 rounded-bl-sm'
+                  }`}>
+                    {msg.content}
+                  </div>
+                  <p className={`text-[9px] text-slate-600 ${isMe ? 'text-right' : 'text-left'}`}>
+                    {isMe ? 'You' : (msg.sender?.name || 'Venue')} · {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input */}
+        <form onSubmit={sendMessage} className="flex items-center gap-2 px-4 py-3 border-t border-white/[0.06] shrink-0">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type a message…"
+            maxLength={1000}
+            className="flex-1 h-10 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500/60 transition-all"
+          />
+          <button
+            type="submit"
+            disabled={sending || !input.trim()}
+            className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/25 flex items-center justify-center text-cyan-400 hover:bg-cyan-500/25 transition-all disabled:opacity-40"
+          >
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 const MyReservations = () => {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [activeTab, setActiveTab] = useState('upcoming');
+  const [chatReservation, setChatReservation] = useState(null);
   const navigate = useNavigate();
 
   const [error, setError] = useState('');
@@ -199,6 +315,10 @@ const MyReservations = () => {
   };
 
   return (
+    <>
+    {chatReservation && (
+      <ChatModal reservation={chatReservation} onClose={() => setChatReservation(null)} />
+    )}
     <div className="min-h-screen pt-32 pb-24 px-6 max-w-5xl mx-auto space-y-12 animate-in fade-in duration-700">
       
       <div className="fixed top-0 right-0 w-[400px] h-[400px] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
@@ -351,9 +471,20 @@ const MyReservations = () => {
                           </div>
 
                           <div className="flex flex-col gap-3 justify-center">
-                             {res.status !== 'completed' && res.status !== 'cancelled' && (
+                             {/* BUG-M3: hide the permit button for terminal states where the QR is useless */}
+                             {!['completed', 'cancelled', 'no-show', 'expired'].includes(res.status) && (
                                <Button onClick={() => navigate('/ticket', { state: { spot: res.parkingSpot, duration: res.duration, totalAmount: res.amountInfo?.totalAmount || res.totalAmount, paymentMethod: res.paymentMethod, bookingId: res._id, createdAt: res.createdAt, scheduledArrival: res.scheduledArrival, paymentStatus: res.paymentStatus } })} className="flex items-center justify-center gap-2 !py-3 !text-[10px]">
                                   <Ticket size={14} /> Open Digital Permit
+                               </Button>
+                             )}
+                             {/* Message venue — only when spot has an owner */}
+                             {!['cancelled', 'expired'].includes(res.status) && (
+                               <Button
+                                 variant="secondary"
+                                 onClick={() => setChatReservation(res)}
+                                 className="flex items-center justify-center gap-2 !py-3 !text-[10px]"
+                               >
+                                 <MessageSquare size={14} /> Message Venue
                                </Button>
                              )}
                              {res.status === 'reserved' && (
@@ -382,6 +513,7 @@ const MyReservations = () => {
         </div>
       )}
     </div>
+    </>
   );
 };
 

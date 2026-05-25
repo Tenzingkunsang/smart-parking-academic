@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { isTokenValid } from './config/api';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import Navbar from './components/Navbar';
@@ -29,6 +29,14 @@ import AdminUsers from './pages/Admin/AdminUsers';
 import AdminScanner from './pages/Admin/AdminScanner';
 import AdminManageSpots from './pages/Admin/AdminManageSpots';
 import OnboardingHint from './components/ui/OnboardingHint';
+
+// Business Owner components
+import BusinessLayout from './components/BusinessLayout';
+import BusinessDashboard from './pages/BusinessOwner/BusinessDashboard';
+import BusinessSpots from './pages/BusinessOwner/BusinessSpots';
+import BusinessReservations from './pages/BusinessOwner/BusinessReservations';
+import BusinessScanner from './pages/BusinessOwner/BusinessScanner';
+import BusinessMessages from './pages/BusinessOwner/BusinessMessages';
 
 import 'leaflet/dist/leaflet.css';
 import 'sweetalert2/dist/sweetalert2.min.css';
@@ -63,8 +71,34 @@ const AdminRoute = ({ children }) => {
   return children;
 };
 
+const BusinessRoute = ({ children }) => {
+  if (!isTokenValid()) {
+    clearAuthStorage();
+    return <Navigate to="/login" replace />;
+  }
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.userType !== 'business_owner' && user.userType !== 'admin') {
+    return <Navigate to="/parking" replace />;
+  }
+  return children;
+};
+
 const PublicOnlyRoute = ({ children }) => {
   return !isTokenValid() ? children : <Navigate to="/" replace />;
+};
+
+// Renders Navbar/Footer only on public routes (not admin or business portals)
+const AppShell = ({ children }) => {
+  const location = useLocation();
+  const isPortal = location.pathname.startsWith('/admin') || location.pathname.startsWith('/business');
+  return (
+    <>
+      {!isPortal && <Navbar />}
+      {!isPortal && <OnboardingHint />}
+      <main>{children}</main>
+      {!isPortal && <Footer />}
+    </>
+  );
 };
 
 function App() {
@@ -87,10 +121,7 @@ function App() {
               },
             }}
           />
-          <Navbar />
-          <OnboardingHint />
-          
-          <main>
+          <AppShell>
             <Routes>
             {/* Discovery & Search */}
             <Route path="/" element={<Dashboard />} />
@@ -177,12 +208,26 @@ function App() {
               <Route path="manage-spots" element={<AdminManageSpots />} />
             </Route>
             
+            {/* Business Owner Routes */}
+            <Route
+              path="/business"
+              element={
+                <BusinessRoute>
+                  <BusinessLayout />
+                </BusinessRoute>
+              }
+            >
+              <Route index element={<BusinessDashboard />} />
+              <Route path="spots" element={<BusinessSpots />} />
+              <Route path="reservations" element={<BusinessReservations />} />
+              <Route path="messages" element={<BusinessMessages />} />
+              <Route path="qr-scanner" element={<BusinessScanner />} />
+            </Route>
+
             {/* 404 - Not Found */}
             <Route path="*" element={<NotFound />} />
-            </Routes>
-          </main>
-          
-          <Footer />
+          </Routes>
+          </AppShell>
         </div>
       </Router>
     </GoogleOAuthProvider>

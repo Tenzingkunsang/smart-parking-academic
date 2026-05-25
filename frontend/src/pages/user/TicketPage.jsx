@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -24,6 +24,8 @@ const TicketPage = () => {
   } = location.state || {};
 
   const [qrValue, setQrValue] = useState('');
+  // BUG-L1: use a ref to target the canvas element safely instead of document.querySelector.
+  const qrCanvasRef = useRef(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelStatus, setCancelStatus] = useState(null);
   const [isCancelled, setIsCancelled] = useState(false);
@@ -38,9 +40,16 @@ const TicketPage = () => {
   const [initiatingPayment, setInitiatingPayment] = useState(false);
 
   const isNoShow = status === 'no-show';
-  const reservationStart = scheduledArrival ? new Date(scheduledArrival) : new Date(createdAt || Date.now());
+  // BUG-H2: guard with status !== null so we don't flash "Access Revoked" before
+  // the first API fetch completes (status starts as null on mount).
+  const reservationStart = scheduledArrival
+    ? new Date(scheduledArrival)
+    : createdAt
+    ? new Date(createdAt)
+    : new Date(); // safe fallback — avoids stale-date instant-expiry
   const checkInDeadline = new Date(reservationStart.getTime() + 15 * 60 * 1000);
-  const isExpired = !isCancelled && !isNoShow && !checkInTime && new Date() > checkInDeadline;
+  const isExpired =
+    status !== null && !isCancelled && !isNoShow && !checkInTime && new Date() > checkInDeadline;
 
   const isPending =
     status === 'pending' ||
@@ -75,6 +84,11 @@ const TicketPage = () => {
   // Bug 2 fix: the QR must encode the backend's HMAC-signed scan token, not a
   // client-built JSON blob. The scanner endpoint rejects unsigned QRs (and
   // stale signed ones) so we re-mint every 4 minutes while the ticket is live.
+  //
+  // Foreground-refresh fix: iOS/Android throttle background JS timers to 15+ min,
+  // so the 4-min interval may not fire while the phone is locked or the tab is
+  // backgrounded. When the user foregrounds the app, we immediately re-fetch so
+  // the admin always scans a fresh (< 4 min old) token.
   useEffect(() => {
     if (!bookingId) { setQrValue(''); return; }
     if (!['reserved', 'checked-in', 'overstay'].includes(status)) {
@@ -97,8 +111,22 @@ const TicketPage = () => {
       }
     };
     fetchScanToken();
-    const id = setInterval(fetchScanToken, 4 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(id); };
+    const intervalId = setInterval(fetchScanToken, 4 * 60 * 1000);
+
+    // Re-fetch immediately when the user brings the app to the foreground.
+    // This covers: phone unlocked, tab re-focused, app switched back to.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !cancelled) {
+        fetchScanToken();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [bookingId, status]);
 
   const handleAttemptVerification = async () => {
@@ -153,7 +181,8 @@ const TicketPage = () => {
   };
 
   const downloadQR = () => {
-    const canvas = document.querySelector('canvas');
+    // BUG-L1: target canvas via ref, not a global DOM query.
+    const canvas = qrCanvasRef.current;
     if (canvas) {
       const url = canvas.toDataURL('image/png');
       const link = document.createElement('a');
@@ -254,7 +283,7 @@ const TicketPage = () => {
                <div className="py-10 flex flex-col items-center gap-8 bg-white/[0.02] border border-white/5 rounded-[2.5rem]">
                   <div className="bg-white p-6 rounded-3xl shadow-[0_0_50px_rgba(255,255,255,0.05)]">
                      {qrValue ? (
-                        <QRCodeCanvas value={qrValue} size={180} level="H" includeMargin={true} />
+                        <QRCodeCanvas ref={qrCanvasRef} value={qrValue} size={180} level="H" includeMargin={true} />
                      ) : (
                         <Loader2 className="animate-spin text-slate-300" size={40} />
                      )}

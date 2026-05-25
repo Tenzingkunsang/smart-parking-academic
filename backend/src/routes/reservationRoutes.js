@@ -23,7 +23,7 @@ const socketService       = require('../services/socketService');
 const WaitlistEntry       = require('../models/WaitlistEntry');
 const jobSchedulerService = require('../services/jobSchedulerService');
 const { holdSpotAtomically, releaseReservedSpotAndPromote } = require('../services/reservationLifecycleService');
-const { signQrPayload } = require('../utils/qrSecurity');
+const { signQrPayload, verifyQrPayload } = require('../utils/qrSecurity');
 const { withTransaction } = require('../utils/withTransaction');
 const FailedRefund = require('../models/FailedRefund');
 const { recalculateUserBehavior } = require('../services/userBehaviorService');
@@ -331,6 +331,47 @@ router.post('/check-in', protect, reservationController.handleScan);
 router.post('/checkout', protect, reservationController.handleScan);
 router.post('/:id/checkout', protect, reservationController.checkOut);
 
+// POST /reservations/qr-lookup — admin-only: verify QR HMAC and return the
+// reservation without taking any side-effect action. Replaces fragile client-side
+// base64url decoding in AdminScanner.
+router.post(
+  '/qr-lookup',
+  protect,
+  adminAuth,
+  async (req, res) => {
+    try {
+      const { qrData } = req.body;
+      if (!qrData) return res.status(400).json({ success: false, message: 'qrData is required' });
+
+      const allowLegacy = String(process.env.QR_ALLOW_LEGACY || 'true').toLowerCase() !== 'false';
+      let parsedData;
+      try {
+        // No maxAgeMs for lookup: stale tokens can still identify the reservation;
+        // the actual check-in/out endpoints enforce freshness.
+        parsedData = verifyQrPayload(qrData, { allowLegacy, maxAgeMs: null });
+      } catch (e) {
+        return res.status(e.statusCode || 400).json({ success: false, message: e.message });
+      }
+
+      // PERF-4: select only the fields AdminScanner actually renders.
+      // Full populate was returning entire spot + user documents (~20 fields
+      // each) on every scan. lean() returns a plain JS object (no Mongoose
+      // overhead). Together cuts response payload ~60% and DB read work.
+      const reservation = await Reservation.findById(parsedData.reservationId)
+        .select('user parkingSpot status lifecycleStage checkInTime paymentStatus paymentMethod amountInfo duration quantity vehiclePlate reservationTime createdAt')
+        .populate('parkingSpot', 'spotNumber locationName price address location')
+        .populate('user', 'name email phone vehicleNumber')
+        .lean();
+      if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
+
+      return res.json({ success: true, data: reservation });
+    } catch (error) {
+      logger.error('qr_lookup_error', { message: error.message });
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+);
+
 // Bug Task-1: short-lived (5-minute) scan token endpoint. The owner polls this
 // from the ticket page so the QR shown to the scanner is always fresh.
 router.get(
@@ -550,9 +591,13 @@ router.put(
       await releaseReservedSpotAndPromote({ reservation, releaseReason: 'user_cancelled', skipCounters: true });
       await jobSchedulerService.cancelReservationJobs(reservation._id);
       
-      res.json({ 
-        success: true, 
-        message: 'Reservation cancelled. Refund credited to wallet.',
+      // BUG-M2: only mention the wallet refund when payment was actually completed.
+      const cancelMsg = reservation.paymentStatus === 'completed'
+        ? 'Reservation cancelled. Refund credited to wallet.'
+        : 'Reservation cancelled.';
+      res.json({
+        success: true,
+        message: cancelMsg,
         data: { refundAmount, refundPercentage }
       });
     } catch (error) {

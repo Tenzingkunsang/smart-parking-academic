@@ -42,13 +42,15 @@ const PaymentSuccess = () => {
           return;
         }
 
+        // BUG-H1: store amount directly — no paisa conversion.
         setPaymentData({
           transaction_id: data.data?.transactionId || 'N/A',
-          total_amount: Math.round((data.data?.amount || 0) * 100),
+          total_amount: data.data?.amount || 0,
           status: 'Verified'
         });
       } catch (err) {
-        setError('Temporal sync error. Contact system root.');
+        // BUG-L4: plain language error instead of technical jargon.
+        setError('Something went wrong while verifying your payment. Please check your bookings or contact support.');
       } finally {
         setVerifying(false);
       }
@@ -97,7 +99,8 @@ const PaymentSuccess = () => {
             </div>
             <div className="pt-4 border-t border-white/5 flex justify-between items-center">
                <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Verified Settlement</span>
-               <span className="text-2xl font-display font-black text-white font-variant-numeric:tabular-nums">Rs. {paymentData?.total_amount ? paymentData.total_amount / 100 : 0}</span>
+               {/* BUG-H1: render directly, no /100 */}
+               <span className="text-2xl font-display font-black text-white font-variant-numeric:tabular-nums">Rs. {paymentData?.total_amount || 0}</span>
             </div>
           </div>
         )}

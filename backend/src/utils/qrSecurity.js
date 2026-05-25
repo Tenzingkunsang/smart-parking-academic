@@ -19,8 +19,11 @@
 const crypto = require('crypto');
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;   // 24h — the ticket the user keeps
-const SCAN_TTL_MS = 5 * 60 * 1000;            // 5min — the freshness window for live scans
-const MAX_SCAN_AGE_MS = 5 * 60 * 1000;        // reject signed QRs older than this at scan time
+// 10 min TTL: gives enough buffer for mobile background JS throttling (iOS throttles
+// timers to ~15 min when backgrounded) while still defeating screenshot replay.
+// TicketPage refreshes every 4 min, so tokens are never older than 4 min in practice.
+const SCAN_TTL_MS = 10 * 60 * 1000;           // 10min — the freshness window for live scans
+const MAX_SCAN_AGE_MS = 10 * 60 * 1000;       // reject signed QRs older than this at scan time
 
 function getSecret() {
   const secret = process.env.QR_SIGNING_SECRET || process.env.JWT_SECRET;
@@ -87,12 +90,17 @@ function verifyQrPayload(raw, { allowLegacy = false, maxAgeMs = null } = {}) {
 
   // Signed token path.
   if (raw.includes('.') && !raw.trim().startsWith('{')) {
-    const [bodyEncoded, sigEncoded] = raw.split('.');
-    if (!bodyEncoded || !sigEncoded) {
+    // BUG-QR1: raw.split('.') returns all segments. A crafted payload like
+    // '<validBody>.<validSig>.<junk>' would destructure correctly and pass sig
+    // verification since sigEncoded still gets the real sig value. Enforce
+    // exactly two segments so any trailing garbage is rejected immediately.
+    const parts = raw.split('.');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
       const err = new Error('Malformed signed QR');
       err.statusCode = 400;
       throw err;
     }
+    const [bodyEncoded, sigEncoded] = parts;
     const expectedSig = crypto.createHmac('sha256', getSecret()).update(bodyEncoded).digest();
     const providedSig = b64urlDecode(sigEncoded);
     if (
@@ -125,7 +133,7 @@ function verifyQrPayload(raw, { allowLegacy = false, maxAgeMs = null } = {}) {
     // for the user's wallet, but the admin scanner should reject anything older
     // than maxAgeMs (typically 5 minutes) to defeat screenshot replay.
     if (maxAgeMs && body.iat && Date.now() - body.iat > maxAgeMs) {
-      const err = new Error(`QR code is stale (older than ${Math.round(maxAgeMs / 60000)} minutes). Please refresh and rescan.`);
+      const err = new Error(`QR code is stale (older than ${Math.round(maxAgeMs / 60000)} min). Please refresh your ticket and rescan.`);
       err.statusCode = 400;
       throw err;
     }

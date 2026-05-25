@@ -4,7 +4,7 @@ const scheduledJobSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ['arrival_confirmation_reminder', 'reservation_expiry_check'],
+      enum: ['arrival_confirmation_reminder', 'reservation_expiry_check', 'overstay_reminder'],
       required: true,
     },
     reservationId: {

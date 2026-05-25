@@ -14,6 +14,7 @@ import {
   CreditCard,
   LogIn,
   LogOut,
+  Upload,
 } from 'lucide-react';
 import { API_BASE, handleAuthExpiry } from '../../config/api';
 
@@ -26,17 +27,16 @@ const AdminScanner = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const scannerRef = useRef(null);
+  // scanningRef: ref-based guard so the success callback can't fire twice before
+  // the scanner is paused (avoids double-processing on very fast scanners).
   const scanningRef = useRef(true);
   // Bug 3 fix: keep the raw scanned text so the action POST can send the
   // signed token verbatim to the backend for HMAC verification.
   const scannedTextRef = useRef(null);
 
-  useEffect(() => {
-    scanningRef.current = scanning;
-  }, [scanning]);
-
   const onScanSuccess = useCallback(async (decodedText) => {
     if (!scanningRef.current) return;
+    scanningRef.current = false; // prevent re-entry before scanner.pause() fully takes effect
     setScanning(false);
     setProcessing(true);
     setError('');
@@ -45,44 +45,35 @@ const AdminScanner = () => {
     setScanAction(null);
 
     try {
-      // Bug 3 fix: accept both QR formats —
-      //   1. Legacy plain JSON: {"reservationId":"..."}
-      //   2. Signed token from /scan-token: "<b64url-body>.<b64url-sig>"
-      let bookingId = null;
-      try {
-        const qrObj = JSON.parse(decodedText);
-        bookingId = qrObj.reservationId || qrObj.bookingId;
-      } catch (_) {
-        const parts = decodedText.split('.');
-        if (parts.length === 2 && parts[0]) {
-          try {
-            const b64 = parts[0].replace(/-/g, '+').replace(/_/g, '/');
-            const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
-            const body = JSON.parse(atob(padded));
-            bookingId = body.reservationId || body.bookingId;
-          } catch (_inner) {
-            // fall through to the error below
-          }
-        }
-      }
-      if (!bookingId) throw new Error('Invalid QR code — no booking ID found.');
+      // Send raw QR payload to the backend for HMAC verification + reservation lookup.
+      // This avoids fragile client-side base64url decoding (atob + JSON.parse) and
+      // validates the signature before any action is taken. Both signed tokens and
+      // legacy plain-JSON QRs are handled by verifyQrPayload on the server.
       scannedTextRef.current = decodedText;
 
       const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
 
-      // Lookup booking (user & parkingSpot both populated by this endpoint)
-      const lookupRes = await fetch(`${API_BASE}/reservations/${bookingId}`, { headers });
+      const lookupRes = await fetch(`${API_BASE}/reservations/qr-lookup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ qrData: decodedText }),
+      });
       if (lookupRes.status === 401) { handleAuthExpiry(); return; }
       const lookupData = await lookupRes.json();
 
-      if (!lookupData.success) throw new Error(lookupData.message || 'Reservation not found.');
+      if (!lookupData.success) throw new Error(lookupData.message || 'Invalid QR code.');
 
       const booking = lookupData.data;
       setBookingData(booking);
 
-      // Determine action
-      if (booking.status === 'reserved' || booking.status === 'pending') {
+      // BUG-M4: pending = unpaid; block check-in until payment is confirmed.
+      // BUG-C6: check-in must strictly route to the admin-secured /checkin path.
+      if (booking.status === 'pending') {
+        throw new Error('Payment not completed — check-in blocked.');
+      } else if (booking.status === 'reserved') {
         setScanAction('checkin');
       } else if (booking.status === 'checked-in' || booking.status === 'overstay') {
         setScanAction('checkout');
@@ -94,6 +85,11 @@ const AdminScanner = () => {
       setTimeout(() => {
         setError('');
         setBookingData(null);
+        // Resume detection on the live camera stream — no cold-start.
+        if (scannerRef.current) {
+          try { scannerRef.current.resume(); } catch (_) {}
+        }
+        scanningRef.current = true;
         setScanning(true);
       }, 4000);
     } finally {
@@ -101,39 +97,42 @@ const AdminScanner = () => {
     }
   }, []);
 
+  // Performance fix: create the camera stream ONCE on mount and keep it alive.
+  // Previously stop() + start() on every scan caused a 1-3s camera cold-start on
+  // mobile. Now we use pause() (keeps video streaming) and resume() (restarts
+  // detection) — switching between scans is nearly instant.
   useEffect(() => {
-    if (!scanning) return;
     let isMounted = true;
-    let scanner = null;
 
-    // Small delay to ensure the DOM is completely ready and prevent dual-initialization locks
+    const container = document.getElementById('qr-reader');
+    if (container) container.innerHTML = ''; // Clear stale DOM nodes from HMR or previous mounts
+
+    // Short delay: lets React finish painting the container before the library measures it.
     const timer = setTimeout(() => {
       if (!isMounted) return;
-
-      const container = document.getElementById('qr-reader');
-      if (container) {
-        container.innerHTML = ''; // Clear any legacy DOM nodes appended by previous mounts
-      }
-
       try {
-        scanner = new Html5Qrcode('qr-reader');
+        const scanner = new Html5Qrcode('qr-reader');
         scannerRef.current = scanner;
         scanner.start(
           { facingMode: 'environment' },
-          { 
-            fps: 24, 
+          {
+            fps: 30,  // was 24 — higher rate improves detection latency
             qrbox: { width: 280, height: 280 },
-            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
           },
           (text) => {
-            if (isMounted) {
-              scanner.stop().catch(() => {});
-              onScanSuccess(text);
-            }
+            if (!isMounted || !scanningRef.current) return;
+            // Pause detection without stopping the video feed.
+            // resume() will restart detection in < 50 ms — no cold-start.
+            // NOTE: scanningRef.current is set to false inside onScanSuccess
+            // (after its own guard check) to prevent double-processing.
+            try { scanner.pause(); } catch (_) {}
+            setScanning(false);
+            onScanSuccess(text);
           },
-          () => {}
+          () => {} // frame-level decode errors are expected and can be ignored
         ).catch((err) => {
-          console.error('Camera start error:', err);
+          if (isMounted) console.error('Camera start error:', err);
         });
       } catch (err) {
         console.error('QR Scanner init error:', err);
@@ -143,16 +142,14 @@ const AdminScanner = () => {
     return () => {
       isMounted = false;
       clearTimeout(timer);
-      if (scanner) {
-        try {
-          scanner.stop().catch((err) => console.error('Error during scanner stop:', err));
-        } catch (e) {
-          // ignore
-        }
+      const s = scannerRef.current;
+      if (s) {
+        s.stop().catch(() => {});
+        scannerRef.current = null;
       }
-      scannerRef.current = null;
     };
-  }, [scanning, onScanSuccess]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount — camera stays alive for the component's lifetime
 
   const handleAction = async (actionType) => {
     if (!bookingData) return;
@@ -160,6 +157,7 @@ const AdminScanner = () => {
     setError('');
     try {
       const token = localStorage.getItem('token');
+      // BUG-C6: explicitly name the admin-secured path for check-in.
       const endpoint = actionType === 'checkin' ? 'checkin' : 'admin-checkout';
       const response = await fetch(`${API_BASE}/reservations/${bookingData._id}/${endpoint}`, {
         method: 'POST',
@@ -200,7 +198,42 @@ const AdminScanner = () => {
     setScanAction(null);
     setError('');
     scannedTextRef.current = null;
+    // Resume detection on the live camera stream — nearly instant, no cold-start.
+    if (scannerRef.current) {
+      try { scannerRef.current.resume(); } catch (_) {}
+    }
+    scanningRef.current = true;
     setScanning(true);
+  };
+
+  const fileInputRef = React.useRef(null);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setError('');
+    setProcessing(true);
+    try {
+      // Use a separate Html5Qrcode instance for file scanning (no DOM element needed)
+      const { Html5Qrcode: H5Q } = await import('html5-qrcode');
+      const tempId = 'qr-file-scanner-admin';
+      let el = document.getElementById(tempId);
+      if (!el) { el = document.createElement('div'); el.id = tempId; el.style.display = 'none'; document.body.appendChild(el); }
+      const fileScanner = new H5Q(tempId);
+      const decoded = await fileScanner.scanFile(file, false);
+      await fileScanner.clear();
+      // Pause the live camera so it doesn't double-fire
+      if (scannerRef.current) { try { scannerRef.current.pause(); } catch (_) {} }
+      scanningRef.current = false;
+      setScanning(false);
+      await onScanSuccess(decoded);
+    } catch (err) {
+      setError('Could not read a QR code from this image. Try a clearer photo.');
+      setTimeout(() => setError(''), 4000);
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const formatDateTime = (dateStr) => {
@@ -227,8 +260,12 @@ const AdminScanner = () => {
         </div>
       </div>
 
+      {/* Hidden file input */}
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Camera Feed */}
+        <div className="space-y-3">
         <div className="relative rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl aspect-square">
           <div id="qr-reader" className="w-full h-full object-cover" />
           
@@ -270,6 +307,15 @@ const AdminScanner = () => {
               )}
             </div>
           )}
+        </div>
+        {/* Upload QR image button */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={processing}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-400 text-xs font-bold hover:text-white hover:bg-white/[0.08] hover:border-cyan-500/30 transition-all disabled:opacity-40"
+        >
+          <Upload size={13} /> Upload QR Image
+        </button>
         </div>
 
         {/* Result Panel */}

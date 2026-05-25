@@ -100,10 +100,56 @@ async function runPendingJobs() {
         }
       }
 
+      // --- JOB 3: OVERSTAY REMINDER ---
+      // Fires every 30 minutes while the user is still in overstay.
+      // Cancelled automatically if user checks out (cancelReservationJobs).
+      if (job.type === 'overstay_reminder') {
+        if (reservation.status === 'overstay') {
+          const checkInTime = reservation.checkInTime ? new Date(reservation.checkInTime) : null;
+          const overstayMinutes = checkInTime
+            ? Math.max(0, Math.round((new Date() - checkInTime) / 60000) - reservation.duration)
+            : 0;
+          const spotNum = reservation.parkingSpot?.spotNumber || '?';
+          const hourlyRate = reservation.parkingSpot?.price || 0;
+          const overstayHours = overstayMinutes > 0 ? Math.ceil(overstayMinutes / 60) : 0;
+          const estimatedCharge = Math.round(overstayHours * hourlyRate * 1.5);
+
+          try {
+            await notificationService.sendNotification(
+              reservation.user,
+              `⚠️ Still in Overstay — ${overstayMinutes} min`,
+              `You have been in overstay for ${overstayMinutes} minutes at Spot #${spotNum}. Estimated additional charge so far: NPR ${estimatedCharge}. Check out now to stop charges.`,
+              'overstay_alert',
+              {
+                reservationId: reservation._id,
+                overstayMinutes,
+                estimatedCharge,
+                spotNumber: spotNum,
+              }
+            );
+          } catch (notifErr) {
+            logger.error('overstay_reminder_notification_failed', {
+              reservationId: reservation._id,
+              message: notifErr.message,
+            });
+          }
+
+          // Real-time socket push so the UI ticker updates
+          if (io) {
+            socketService.emitToUser(reservation.user.toString(), 'overstayUpdate', {
+              reservationId: reservation._id,
+              overstayMinutes,
+              estimatedCharge,
+            });
+          }
+        }
+        // If already checked out / completed, the job just completes — no action needed.
+      }
+
       job.status = 'completed';
       await job.save();
     } catch (error) {
-      console.error(`Error processing job ${job._id}:`, error);
+      logger.error('job_processing_failed', { jobId: job._id, type: job.type, message: error.message });
       job.status = 'failed';
       job.attempts += 1;
       job.lastError = error.message;
@@ -119,28 +165,68 @@ async function checkExpiredSessions() {
     const expired = await Reservation.find({
       status: 'checked-in',
       'activeSession.estimatedCheckOut': { $lt: now }
-    });
-    
+    }).populate('parkingSpot', 'spotNumber locationName price');
+
     if (expired.length === 0) return;
 
     const io = socketService.getIo();
-    
+
     for (const res of expired) {
       // Mark as overstay
       res.status = 'overstay';
       res.lifecycleStage = 'overstay';
       await res.save();
-      
-      // Emit to user via socket if socket exists
+
+      const spotNum = res.parkingSpot?.spotNumber || '?';
+      const overstayRate = res.parkingSpot?.price
+        ? `NPR ${Math.round(res.parkingSpot.price * 1.5)}/hr`
+        : 'extra charges';
+
+      // Notify user they are now in overstay and accruing charges
+      try {
+        await notificationService.sendNotification(
+          res.user,
+          '⚠️ Overstay Alert — You Are Being Charged',
+          `Your booked time for Spot #${spotNum} has ended. You are now in OVERSTAY and accruing extra charges at ${overstayRate}. Please check out immediately to minimise extra fees.`,
+          'overstay_alert',
+          {
+            reservationId: res._id,
+            spotNumber: spotNum,
+            overstayRate,
+            checkOutUrl: `/my-reservations/${res._id}`,
+          }
+        );
+      } catch (notifErr) {
+        logger.error('overstay_notification_failed', { reservationId: res._id, message: notifErr.message });
+      }
+
+      // Emit real-time socket event so the user's active session page updates immediately
       if (io) {
-        socketService.emitToUser(res.user.toString(), 'sessionExpired', { 
+        socketService.emitToUser(res.user.toString(), 'sessionExpired', {
           reservationId: res._id,
-          message: 'Your parking session has ended'
+          status: 'overstay',
+          message: `⚠️ Overstay! Extra charges at ${overstayRate} are now accruing.`,
+        });
+        io.emit('reservationStatusChanged', {
+          reservationId: res._id,
+          status: 'overstay',
+          lifecycleStage: 'overstay',
+        });
+      }
+
+      // Schedule a recurring overstay reminder every 30 minutes so the user
+      // keeps getting nudged until they check out. Cap at 4 reminders (2 hrs).
+      for (let i = 1; i <= 4; i++) {
+        const runAt = new Date(now.getTime() + i * 30 * 60 * 1000);
+        await ScheduledJob.create({
+          type: 'overstay_reminder',
+          reservationId: res._id,
+          runAt,
         });
       }
     }
   } catch (error) {
-    console.error('Error checking expired sessions:', error);
+    logger.error('check_expired_sessions_error', { message: error.message });
   }
 }
 

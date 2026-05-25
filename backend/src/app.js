@@ -19,6 +19,8 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const userRoutes = require('./routes/userRoutes');
 const smartParkingRoutes = require('./routes/smartParkingRoutes');
 const adminAnalyticsRoutes = require('./routes/adminAnalyticsRoutes');
+const businessRoutes = require('./routes/businessRoutes');
+const messageRoutes  = require('./routes/messageRoutes');
 
 // Bug LOW-2: production must explicitly set CORS_ORIGIN. We only allow the
 // dev fallback when NODE_ENV !== 'production'. This prevents a typo or missing
@@ -70,6 +72,8 @@ function createApp() {
   app.use('/api/v1/payments', paymentRoutes);
   app.use('/api/v1/notifications', notificationRoutes);
   app.use('/api/v1/user', userRoutes);
+  app.use('/api/v1/business', businessRoutes);
+  app.use('/api/v1/messages', messageRoutes);
 
   app.get('/health', (req, res) => {
     res.json({

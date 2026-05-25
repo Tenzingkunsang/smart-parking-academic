@@ -1,0 +1,118 @@
+name: Deploy to Azure Container Apps
+
+on:
+  push:
+    branches: [main]           # auto-deploy when main is updated
+  workflow_dispatch:            # manual trigger from GitHub Actions tab
+
+env:
+  REGISTRY: ${{ secrets.ACR_LOGIN_SERVER }}   # e.g. smartparkacr.azurecr.io
+  BACKEND_IMAGE: smartpark-backend
+  FRONTEND_IMAGE: smartpark-frontend
+
+jobs:
+  # ── 1. Build & push images to Azure Container Registry ──────────────────────
+  build-and-push:
+    name: Build & Push Docker images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Backend ──────────────────────────────────────────────────────────────
+      - name: Build & push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Frontend ─────────────────────────────────────────────────────────────
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: true
+          build-args: |
+            REACT_APP_API_URL=${{ secrets.REACT_APP_API_URL }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── 2. Deploy to Azure Container Apps ───────────────────────────────────────
+  deploy:
+    name: Deploy to Azure
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # ── Backend Container App ────────────────────────────────────────────────
+      - name: Deploy backend
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          containerAppName: smartpark-backend
+          imageToDeploy: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          registryUrl: ${{ secrets.ACR_LOGIN_SERVER }}
+          registryUsername: ${{ secrets.ACR_USERNAME }}
+          registryPassword: ${{ secrets.ACR_PASSWORD }}
+          environmentVariables: >
+            NODE_ENV=production
+            PORT=5001
+            MONGODB_URI=secretref:mongodb-uri
+            JWT_SECRET=secretref:jwt-secret
+            QR_SIGNING_SECRET=secretref:qr-signing-secret
+            CORS_ORIGIN=secretref:cors-origin
+            KHALTI_SECRET_KEY=secretref:khalti-secret-key
+            KHALTI_MODE=live
+            EMAIL_USER=secretref:email-user
+            EMAIL_PASS=secretref:email-pass
+            QR_ALLOW_LEGACY=false
+
+      # ── Frontend Container App ───────────────────────────────────────────────
+      - name: Deploy frontend
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          containerAppName: smartpark-frontend
+          imageToDeploy: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+          registryUrl: ${{ secrets.ACR_LOGIN_SERVER }}
+          registryUsername: ${{ secrets.ACR_USERNAME }}
+          registryPassword: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Print deployed URLs
+        run: |
+          BACKEND_URL=$(az containerapp show \
+            --name smartpark-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          FRONTEND_URL=$(az containerapp show \
+            --name smartpark-frontend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "✅ Backend:  https://$BACKEND_URL"
+          echo "✅ Frontend: https://$FRONTEND_URL"

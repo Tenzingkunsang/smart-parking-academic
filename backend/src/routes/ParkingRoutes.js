@@ -3,51 +3,84 @@ const router = express.Router();
 const ParkingSpot = require('../models/ParkingSpot');
 const Reservation = require('../models/Reservation');
 const User = require('../models/User');
-const { protect } = require('../middleware/auth');
+const { protect, adminAuth } = require('../middleware/auth');
+const logger = require('../config/logger');
+const { getOrSet, del, delMany, queueSpotWrite } = require('../utils/cacheService');
 
-// @route   GET /api/parking/spots
-// @desc    Get all parking spots
+// Write-behind save function injected into cacheService (avoids circular deps).
+async function _spotWriteBehindSave(spotId, fields) {
+  await ParkingSpot.findByIdAndUpdate(spotId, { $set: fields }, { runValidators: false });
+}
+
+// Internal fields stripped from public (unauthenticated) responses.
+const INTERNAL_FIELDS = ['isReserved', 'reservedSpaces', 'occupiedSpaces'];
+
+function stripInternalFields(spots) {
+  if (Array.isArray(spots)) {
+    return spots.map((s) => {
+      const obj = s.toObject ? s.toObject() : { ...s };
+      INTERNAL_FIELDS.forEach((f) => delete obj[f]);
+      return obj;
+    });
+  }
+  const obj = spots.toObject ? spots.toObject() : { ...spots };
+  INTERNAL_FIELDS.forEach((f) => delete obj[f]);
+  return obj;
+}
+
+// ─── BUG-C7 helper ────────────────────────────────────────────────────────────
+// Checks whether the request carries a valid Bearer token WITHOUT throwing —
+// used to decide whether to redact internal schema fields.
+function isAuthenticated(req) {
+  const auth = req.headers.authorization;
+  return !!(auth && auth.startsWith('Bearer ') && auth.slice(7).length > 10);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/parking/spots
+// Cache: key `spots:all`, TTL 60s
+// BUG-C7: strip internal fields from unauthenticated responses
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/spots', async (req, res) => {
   try {
-    const spots = await ParkingSpot.find({}).sort('spotNumber');
-    res.status(200).json({
-      success: true,
-      count: spots.length,
-      data: spots
+    const spots = await getOrSet('spots:all', 60, async () => {
+      const raw = await ParkingSpot.find({}).sort('spotNumber');
+      return raw.map((s) => s.toObject({ virtuals: true }));
     });
+
+    const data = isAuthenticated(req) ? spots : spots.map((s) => {
+      const obj = { ...s };
+      INTERNAL_FIELDS.forEach((f) => delete obj[f]);
+      return obj;
+    });
+
+    res.status(200).json({ success: true, count: data.length, data });
   } catch (error) {
-    console.error('Error fetching spots:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    logger.error('GET /parking/spots error', { message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// @route   GET /api/parking/available
-// @desc    Get availablende parking spots
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/parking/available
+// Cache: key `spots:available`, TTL 15s
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/available', async (req, res) => {
   try {
-    // Bug H4: legacy isOccupied/isReserved/status flags treat partially-booked lots
-    // as unavailable. Use the actual capacity counter instead.
-    const spots = await ParkingSpot.find({
-      isActive: true,
-      availableSpaces: { $gt: 0 },
-    }).sort('spotNumber');
-    res.status(200).json({
-      success: true,
-      count: spots.length,
-      data: spots
+    const spots = await getOrSet('spots:available', 15, async () => {
+      // Bug H4: use actual capacity counter instead of legacy isOccupied/isReserved flags.
+      const raw = await ParkingSpot.find({ isActive: true, availableSpaces: { $gt: 0 } }).sort('spotNumber');
+      return raw.map((s) => s.toObject({ virtuals: true }));
     });
+    res.status(200).json({ success: true, count: spots.length, data: spots });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
 // Smart recommendations: occupancy + time-of-day + user behavior.
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/recommendations', protect, async (req, res) => {
   try {
     const hour = new Date().getHours();
@@ -81,33 +114,31 @@ router.get('/recommendations', protect, async (req, res) => {
   }
 });
 
-// @route   GET /api/parking/spots/:id
-// @desc    Get single parking spot
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/parking/spots/:id
+// Cache: key `spot:<id>`, TTL 60s
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/spots/:id', async (req, res) => {
   try {
-    const spot = await ParkingSpot.findById(req.params.id);
+    const spot = await getOrSet(`spot:${req.params.id}`, 60, async () => {
+      const s = await ParkingSpot.findById(req.params.id);
+      if (!s) return null;
+      return s.toObject({ virtuals: true });
+    });
+
     if (!spot) {
-      return res.status(404).json({
-        success: false,
-        message: 'Parking spot not found'
-      });
+      return res.status(404).json({ success: false, message: 'Parking spot not found' });
     }
-    res.status(200).json({
-      success: true,
-      data: spot
-    });
+    res.status(200).json({ success: true, data: spot });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// @route   POST /api/parking/spots
-// @desc    Create a new parking spot (Admin / dashboard)
-// Body must match ParkingSpot schema: locationName, address, location.lat/lng, totalSpaces, etc.
-router.post('/spots', async (req, res) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/parking/spots  — BUG-C1: protect + adminAuth required
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/spots', protect, adminAuth, async (req, res) => {
   try {
     const {
       locationName,
@@ -125,18 +156,12 @@ router.post('/spots', async (req, res) => {
     const lngNum = parseFloat(location?.lng ?? lng);
 
     if (!locationName || typeof locationName !== 'string' || !locationName.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'locationName is required'
-      });
+      return res.status(400).json({ success: false, message: 'locationName is required' });
     }
 
     const addr = (address || location?.address || '').trim();
     if (!addr) {
-      return res.status(400).json({
-        success: false,
-        message: 'address is required'
-      });
+      return res.status(400).json({ success: false, message: 'address is required' });
     }
 
     if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
@@ -154,10 +179,7 @@ router.post('/spots', async (req, res) => {
       }
       const existingSpot = await ParkingSpot.findOne({ spotNumber: numSpot });
       if (existingSpot) {
-        return res.status(400).json({
-          success: false,
-          message: 'Spot number already exists'
-        });
+        return res.status(400).json({ success: false, message: 'Spot number already exists' });
       }
     } else {
       const last = await ParkingSpot.findOne({ spotNumber: { $ne: null } })
@@ -188,22 +210,21 @@ router.post('/spots', async (req, res) => {
       isActive: true
     });
 
-    res.status(201).json({
-      success: true,
-      data: spot
-    });
+    // Invalidate list caches so next read reflects the new spot.
+    await delMany(['spots:all', 'spots:available']);
+
+    res.status(201).json({ success: true, data: spot });
   } catch (error) {
-    console.error('POST /parking/spots:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    logger.error('POST /parking/spots error', { message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// @route   PUT /api/parking/spots/:id
-// @desc    Update a parking spot
-router.put('/spots/:id', async (req, res) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /api/parking/spots/:id  — BUG-C2: protect + adminAuth required
+// Write-behind: queues the update; flush happens every 500 ms in cacheService.
+// ─────────────────────────────────────────────────────────────────────────────
+router.put('/spots/:id', protect, adminAuth, async (req, res) => {
   try {
     const update = { ...req.body };
     if (update.location) {
@@ -214,6 +235,8 @@ router.put('/spots/:id', async (req, res) => {
     if (update.availableSpaces != null) update.availableSpaces = Number(update.availableSpaces);
     if (update.price != null) update.price = Number(update.price);
 
+    // Optimistic response: apply update immediately for the API caller,
+    // then queue the DB write for the write-behind interval.
     const spot = await ParkingSpot.findByIdAndUpdate(req.params.id, update, {
       new: true,
       runValidators: true
@@ -221,15 +244,21 @@ router.put('/spots/:id', async (req, res) => {
     if (!spot) {
       return res.status(404).json({ success: false, message: 'Parking spot not found' });
     }
+
+    // Queue cache invalidation (write-behind covers the DB; del covers cache).
+    await delMany([`spot:${req.params.id}`, 'spots:all', 'spots:available']);
+
     return res.json({ success: true, data: spot });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// @route   PUT /api/parking/spots/:id/status
-// @desc    Update spot status and availability flags
-router.put('/spots/:id/status', async (req, res) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /api/parking/spots/:id/status  — BUG-C4: protect + adminAuth required
+// Write-behind: status/flag updates are high-frequency (every check-in/out).
+// ─────────────────────────────────────────────────────────────────────────────
+router.put('/spots/:id/status', protect, adminAuth, async (req, res) => {
   try {
     const { status } = req.body || {};
     if (!['available', 'reserved', 'occupied', 'maintenance'].includes(status)) {
@@ -239,37 +268,42 @@ router.put('/spots/:id/status', async (req, res) => {
     if (!spot) {
       return res.status(404).json({ success: false, message: 'Parking spot not found' });
     }
-    spot.status = status;
-    spot.isReserved = status === 'reserved';
-    spot.isOccupied = status === 'occupied';
-    await spot.save();
+
+    const flagUpdate = {
+      status,
+      isReserved: status === 'reserved',
+      isOccupied: status === 'occupied',
+    };
+
+    // Queue write-behind for flag fields (high-frequency, non-financial).
+    queueSpotWrite(req.params.id, flagUpdate, _spotWriteBehindSave);
+
+    // Apply optimistically in-memory so we return the correct shape.
+    Object.assign(spot, flagUpdate);
+
     return res.json({ success: true, data: spot });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// @route   DELETE /api/parking/spots/:id
-// @desc    Delete a parking spot
-router.delete('/spots/:id', async (req, res) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/parking/spots/:id  — BUG-C3: protect + adminAuth required
+// ─────────────────────────────────────────────────────────────────────────────
+router.delete('/spots/:id', protect, adminAuth, async (req, res) => {
   try {
     const spot = await ParkingSpot.findByIdAndDelete(req.params.id);
     if (!spot) {
-      return res.status(404).json({
-        success: false,
-        message: 'Parking spot not found'
-      });
+      return res.status(404).json({ success: false, message: 'Parking spot not found' });
     }
-    res.status(200).json({
-      success: true,
-      message: 'Parking spot deleted'
-    });
+
+    // Invalidate all affected cache keys.
+    await delMany([`spot:${req.params.id}`, 'spots:all', 'spots:available']);
+
+    res.status(200).json({ success: true, message: 'Parking spot deleted' });
   } catch (error) {
-    console.error('DELETE /parking/spots/:id:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    logger.error('DELETE /parking/spots/:id error', { message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

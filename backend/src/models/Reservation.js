@@ -166,7 +166,9 @@ const reservationSchema = new mongoose.Schema({
   arrivalConfirmedUntil: { type: Date, default: null },
   confirmedByUser: { type: Boolean, default: false },
   lastNotifiedAt: { type: Date, default: null },
-  overtimeApplied: { type: Boolean, default: false },  penaltyApplied: { type: Boolean, default: false }
+  // BUG-L3: separate field definitions onto individual lines for readability.
+  overtimeApplied: { type: Boolean, default: false },
+  penaltyApplied:  { type: Boolean, default: false }
 }, {
   timestamps: true,
   toJSON: { virtuals: true }

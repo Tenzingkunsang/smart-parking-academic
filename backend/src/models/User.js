@@ -53,10 +53,20 @@ const userSchema = new mongoose.Schema({
     enum: ['car', 'motorcycle'],
     default: 'car'
   },
-  userType: { 
-    type: String, 
-    enum: ['user', 'admin'], 
-    default: 'user' 
+  userType: {
+    type: String,
+    enum: ['user', 'admin', 'business_owner'],
+    default: 'user'
+  },
+  // Profile for business_owner accounts
+  businessProfile: {
+    businessName:    { type: String, default: '' },
+    businessAddress: { type: String, default: '' },
+    businessPhone:   { type: String, default: '' },
+    businessEmail:   { type: String, default: '' },
+    // Admin can approve/suspend a business owner account
+    verified:        { type: Boolean, default: false },
+    suspendedAt:     { type: Date,    default: null },
   },
   isActive: {
     type: Boolean,

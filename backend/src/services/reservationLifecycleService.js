@@ -145,13 +145,23 @@ async function releaseReservedSpotAndPromote({ reservation, releaseReason = 'rel
 
   // Bug H3: when the caller already decremented counters inside its own transaction,
   // skip the $inc to avoid double-release. We still rebuild status flags + promote waitlist.
+  //
+  // BUG-LC1: plain $inc can drive occupiedSpaces/reservedSpaces below 0 if
+  // called with wrong priorStatus or after a partial failure. Use an aggregation
+  // pipeline update so each counter is clamped to 0 via $max.
   const spot = skipCounters
     ? await ParkingSpot.findById(reservation.parkingSpot)
-    : await ParkingSpot.findByIdAndUpdate(
-        reservation.parkingSpot,
+    : await ParkingSpot.findOneAndUpdate(
+        { _id: reservation.parkingSpot },
         wasCheckedIn
-          ? { $inc: { availableSpaces: qty, occupiedSpaces: -qty } }
-          : { $inc: { availableSpaces: qty, reservedSpaces: -qty } },
+          ? [{ $set: {
+              availableSpaces: { $add: ['$availableSpaces', qty] },
+              occupiedSpaces:  { $max: [0, { $subtract: ['$occupiedSpaces', qty] }] },
+            } }]
+          : [{ $set: {
+              availableSpaces: { $add: ['$availableSpaces', qty] },
+              reservedSpaces:  { $max: [0, { $subtract: ['$reservedSpaces', qty] }] },
+            } }],
         { new: true }
       );
 
@@ -174,13 +184,18 @@ async function releaseReservedSpotAndPromote({ reservation, releaseReason = 'rel
     occupiedNow: spot.occupiedSpaces
   });
 
-  // Waitlist promotion: find next eligible entry
-  const nextEntry = await WaitlistEntry.findOne({
-    parkingSpot:      spot._id,
-    promoted:         false,
-    quantity:         { $lte: spot.availableSpaces },
-    scheduledArrival: { $gte: new Date(Date.now() - 30 * 60 * 1000) },
-  }).sort({ createdAt: 1 });
+  // BUG-H4: use findOneAndUpdate to atomically claim the waitlist entry and
+  // prevent two concurrent releases from promoting the same entry twice.
+  const nextEntry = await WaitlistEntry.findOneAndUpdate(
+    {
+      parkingSpot:      spot._id,
+      promoted:         false,
+      quantity:         { $lte: spot.availableSpaces },
+      scheduledArrival: { $gte: new Date(Date.now() - 30 * 60 * 1000) },
+    },
+    { $set: { promoted: true } },
+    { new: true, sort: { createdAt: 1 } }
+  );
 
   if (nextEntry) {
     const baseAmount = Math.ceil(nextEntry.duration / 60) * spot.price * (nextEntry.quantity || 1);
@@ -202,9 +217,18 @@ async function releaseReservedSpotAndPromote({ reservation, releaseReason = 'rel
       paymentStatus: 'pending',
     });
 
-    nextEntry.promoted   = true;
+    // promoted flag already set atomically by findOneAndUpdate above; just stamp the time.
     nextEntry.promotedAt = new Date();
     await nextEntry.save();
+
+    // BUG-LC2: promoted reservation had no expiry/reminder jobs scheduled,
+    // so no-show detection never fired for waitlist users. Schedule now.
+    try {
+      const jobSchedulerService = require('./jobSchedulerService');
+      await jobSchedulerService.scheduleReservationJobs(promotedReservation);
+    } catch (schedErr) {
+      logger.error('waitlist_promote_schedule_jobs_failed', { reservationId: promotedReservation._id, message: schedErr.message });
+    }
 
     logger.info('waitlist_promoted', { entryId: nextEntry._id, reservationId: promotedReservation._id });
 

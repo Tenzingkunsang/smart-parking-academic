@@ -35,8 +35,14 @@ function calculateCheckoutBilling({ reservation, spot, user, checkOutTime }) {
   }
 
   const baseTotal = reservation.amountInfo?.totalAmount || 0;
+  // BUG-BILLING1: Math.ceil(overstayMinutes / 60) billed by started hour, so
+  // even 1 min past grace = 1 full-hour charge. Per-minute billing is fairer
+  // and matches what users expect. Charge is still 1.5× the hourly rate.
+  const overstayCharge = overstayMinutes > 0
+    ? Math.round((overstayMinutes / 60) * (hourlyRate || 0) * OVERTIME_MULTIPLIER)
+    : 0;
+  // Keep overstayHours in return value for display (UI shows "X hrs Y min" or similar).
   const overstayHours = overstayMinutes > 0 ? Math.ceil(overstayMinutes / 60) : 0;
-  const overstayCharge = Math.round(overstayHours * (hourlyRate || 0) * OVERTIME_MULTIPLIER);
 
   const subtotal = baseTotal + overstayCharge;
   const hasActivePenalty = !!(user && (user.penaltyActive || (user.violationCount || 0) >= 3));

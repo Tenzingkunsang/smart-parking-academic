@@ -16,6 +16,13 @@ const parkingSpotSchema = new mongoose.Schema({
   vehicleTypes: [{ type: String, enum: ['car', 'motorcycle', 'ev', 'all'], default: 'all' }],
   features: [{ type: String, enum: ['ev_charging', 'handicap', 'covered', '24_hours'] }],
   isActive: { type: Boolean, default: true },
+  // null = platform spot managed by admins; ObjectId = owned by a business_owner
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    index: true,
+  },
   // Legacy fields for compatibility
   spotNumber: { type: Number, default: null },
   isOccupied: { type: Boolean, default: false },
@@ -42,7 +49,9 @@ parkingSpotSchema.methods.bookSpace = async function(quantity = 1) {
 };
 
 parkingSpotSchema.methods.releaseSpace = async function(quantity = 1) {
-  this.reservedSpaces -= quantity;
+  // BUG-SPOT1: no floor guard — direct callers (not going through holdSpotAtomically)
+  // could drive reservedSpaces below 0. Clamp to 0 so counters stay sane.
+  this.reservedSpaces = Math.max(0, this.reservedSpaces - quantity);
   this.availableSpaces += quantity;
   await this.save();
   return this;

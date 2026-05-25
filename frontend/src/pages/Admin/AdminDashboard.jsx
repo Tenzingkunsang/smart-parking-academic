@@ -1,44 +1,101 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  DollarSign,
-  CalendarCheck,
-  RotateCcw,
-  Loader2,
-  QrCode,
-  ClipboardList,
-  ParkingSquare,
-  TrendingUp,
-  Camera,
+  DollarSign, CalendarCheck, RotateCcw, Loader2, QrCode,
+  ClipboardList, ParkingSquare, TrendingUp, Users, AlertTriangle,
+  ArrowRight, Activity, Clock, CheckCircle2, XCircle, Eye,
 } from 'lucide-react';
 import { API_BASE } from '../../config/api';
 
+// ─── Stat card ────────────────────────────────────────────────────────────────
+const StatCard = ({ label, value, sub, icon: Icon, accent = 'cyan', trend }) => {
+  const accents = {
+    cyan:   { ring: 'border-cyan-500/20',   bg: 'bg-cyan-500/8',   icon: 'text-cyan-400',   glow: 'shadow-cyan-500/10' },
+    emerald:{ ring: 'border-emerald-500/20', bg: 'bg-emerald-500/8', icon: 'text-emerald-400', glow: 'shadow-emerald-500/10' },
+    violet: { ring: 'border-violet-500/20', bg: 'bg-violet-500/8', icon: 'text-violet-400', glow: 'shadow-violet-500/10' },
+    amber:  { ring: 'border-amber-500/20',  bg: 'bg-amber-500/8',  icon: 'text-amber-400',  glow: 'shadow-amber-500/10' },
+    blue:   { ring: 'border-blue-500/20',   bg: 'bg-blue-500/8',   icon: 'text-blue-400',   glow: 'shadow-blue-500/10' },
+    rose:   { ring: 'border-rose-500/20',   bg: 'bg-rose-500/8',   icon: 'text-rose-400',   glow: 'shadow-rose-500/10' },
+  };
+  const a = accents[accent];
+  return (
+    <div className={`relative rounded-2xl bg-[#0c0c0e] border ${a.ring} p-5 hover:bg-[#0f0f12] transition-all duration-300 shadow-lg ${a.glow} group overflow-hidden`}>
+      <div className={`absolute -top-8 -right-8 w-24 h-24 rounded-full ${a.bg} blur-2xl opacity-60 group-hover:opacity-100 transition-opacity`} />
+      <div className="relative">
+        <div className="flex items-start justify-between mb-4">
+          <div className={`w-10 h-10 rounded-xl ${a.bg} border ${a.ring} flex items-center justify-center`}>
+            <Icon size={18} className={a.icon} />
+          </div>
+          {trend !== undefined && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${trend >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+              {trend >= 0 ? '↑' : '↓'} {Math.abs(trend)}%
+            </span>
+          )}
+        </div>
+        <p className="text-2xl font-black text-white tracking-tight">{value}</p>
+        <p className="text-[11px] font-semibold text-slate-500 mt-1 uppercase tracking-wider">{label}</p>
+        {sub && <p className="text-[10px] text-slate-700 mt-1">{sub}</p>}
+      </div>
+    </div>
+  );
+};
+
+// ─── Quick action card ────────────────────────────────────────────────────────
+const ActionCard = ({ label, desc, icon: Icon, onClick, gradient, shadow }) => (
+  <button
+    onClick={onClick}
+    className={`group relative overflow-hidden rounded-2xl p-6 text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.99] ${gradient} ${shadow} border border-white/10`}
+  >
+    <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full bg-white/5 group-hover:scale-150 transition-transform duration-500" />
+    <div className="relative z-10 flex flex-col gap-3">
+      <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
+        <Icon size={20} className="text-white" strokeWidth={2} />
+      </div>
+      <div>
+        <p className="text-base font-extrabold text-white">{label}</p>
+        <p className="text-xs text-white/50 mt-0.5">{desc}</p>
+      </div>
+      <ArrowRight size={14} className="text-white/30 group-hover:text-white/70 group-hover:translate-x-1 transition-all" />
+    </div>
+  </button>
+);
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+const statusBadge = (status) => {
+  const map = {
+    reserved:    'bg-blue-500/15 text-blue-400 border-blue-500/20',
+    'checked-in':'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+    completed:   'bg-slate-500/10 text-slate-500 border-slate-500/15',
+    cancelled:   'bg-red-500/15 text-red-400 border-red-500/20',
+    'no-show':   'bg-amber-500/15 text-amber-400 border-amber-500/20',
+    overstay:    'bg-orange-500/15 text-orange-400 border-orange-500/20',
+    pending:     'bg-yellow-500/15 text-yellow-400 border-yellow-500/20',
+  };
+  return `inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide border ${map[status] || 'bg-slate-500/10 text-slate-500 border-slate-500/15'}`;
+};
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recentBookings, setRecentBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const now = new Date();
+  const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('token');
         const headers = { Authorization: `Bearer ${token}` };
-
-        // Fetch stats
-        const statsRes = await fetch(`${API_BASE}/admin/stats`, { headers });
-        const statsData = await statsRes.json();
+        const [statsRes, resRes] = await Promise.all([
+          fetch(`${API_BASE}/admin/stats`, { headers }),
+          fetch(`${API_BASE}/admin/reservations?limit=6`, { headers }),
+        ]);
+        const [statsData, resData] = await Promise.all([statsRes.json(), resRes.json()]);
         if (statsData.success) setStats(statsData.data);
-
-        // Fetch recent reservations (last 5)
-        const resRes = await fetch(`${API_BASE}/admin/reservations`, { headers });
-        const resData = await resRes.json();
-        if (resData.success) {
-          const sorted = (resData.data || [])
-            .sort((a, b) => new Date(b.reservationTime || b.createdAt) - new Date(a.reservationTime || a.createdAt))
-            .slice(0, 5);
-          setRecentBookings(sorted);
-        }
+        if (resData.success) setRecentBookings(resData.data || []);
       } catch (err) {
         console.error('Dashboard fetch error:', err);
       } finally {
@@ -48,158 +105,154 @@ const AdminDashboard = () => {
     fetchData();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
-        <Loader2 className="animate-spin text-cyan-400" size={44} />
-        <span className="text-sm font-semibold text-slate-400 tracking-wide">Loading Dashboard...</span>
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+      <div className="relative">
+        <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+          <Loader2 className="animate-spin text-cyan-400" size={26} />
+        </div>
       </div>
-    );
-  }
+      <p className="text-sm font-semibold text-slate-500">Loading dashboard...</p>
+    </div>
+  );
 
-  const pendingRefunds = (recentBookings || []).filter(
-    (b) => b.status === 'cancelled' && b.refundInfo?.refundStatus === 'pending'
-  ).length;
-
-  const statCards = [
-    {
-      label: 'Total Revenue',
-      value: `Rs. ${stats?.totalRevenue?.toLocaleString() || '0'}`,
-      icon: DollarSign,
-      gradient: 'from-emerald-500 to-teal-600',
-      bgGlow: 'shadow-emerald-500/20',
-      iconBg: 'bg-emerald-500/15',
-      iconColor: 'text-emerald-400',
-    },
-    {
-      label: "Today's Revenue",
-      value: `Rs. ${stats?.todayRevenue?.toLocaleString() || '0'}`,
-      icon: TrendingUp,
-      gradient: 'from-blue-500 to-indigo-600',
-      bgGlow: 'shadow-blue-500/20',
-      iconBg: 'bg-blue-500/15',
-      iconColor: 'text-blue-400',
-    },
-    {
-      label: 'Active Bookings',
-      value: stats?.activeReservations || 0,
-      icon: CalendarCheck,
-      gradient: 'from-violet-500 to-purple-600',
-      bgGlow: 'shadow-violet-500/20',
-      iconBg: 'bg-violet-500/15',
-      iconColor: 'text-violet-400',
-    },
-    {
-      label: 'Pending Refunds',
-      value: pendingRefunds,
-      icon: RotateCcw,
-      gradient: 'from-amber-500 to-orange-600',
-      bgGlow: 'shadow-amber-500/20',
-      iconBg: 'bg-amber-500/15',
-      iconColor: 'text-amber-400',
-    },
-  ];
-
-  const getStatusBadge = (status) => {
-    const styles = {
-      reserved: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
-      'checked-in': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
-      completed: 'bg-slate-500/15 text-slate-400 border-slate-500/20',
-      cancelled: 'bg-red-500/15 text-red-400 border-red-500/20',
-      'no-show': 'bg-amber-500/15 text-amber-400 border-amber-500/20',
-      overstay: 'bg-orange-500/15 text-orange-400 border-orange-500/20',
-    };
-    return styles[status] || 'bg-slate-500/15 text-slate-400 border-slate-500/20';
-  };
+  const utilizationPct = stats?.totalSpots
+    ? Math.round(((stats.occupiedSpots || 0) / stats.totalSpots) * 100)
+    : 0;
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700 pb-10">
+    <div className="space-y-8 pb-10 animate-in fade-in duration-500">
 
-      {/* ─── Page Header ─── */}
-      <div className="space-y-1">
-        <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-          Admin Dashboard
-        </h1>
-        <p className="text-slate-400 text-sm font-medium">
-          Manage your Smart Parking system at a glance.
-        </p>
+      {/* ── Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-600 mb-1">
+            {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            {greeting}, <span className="text-cyan-400">{user.name?.split(' ')[0] || 'Admin'}</span>
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">Here's what's happening with your parking system today.</p>
+        </div>
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0c0c0e] border border-white/[0.06] self-start sm:self-auto">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-xs font-semibold text-slate-400">
+            {stats?.activeReservations || 0} active now
+          </span>
+        </div>
       </div>
 
-      {/* ─── 4 Stat Cards ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {statCards.map((card) => (
-          <div
-            key={card.label}
-            className={`relative overflow-hidden rounded-2xl bg-white/[0.03] border border-white/[0.06] p-6 hover:border-white/[0.12] transition-all duration-300 shadow-lg ${card.bgGlow}`}
-          >
-            <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-gradient-to-br opacity-10" />
-            <div className="flex items-start justify-between mb-4">
-              <div className={`w-12 h-12 rounded-xl ${card.iconBg} flex items-center justify-center`}>
-                <card.icon size={22} className={card.iconColor} />
+      {/* ── 6 stat cards ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <StatCard label="Total Revenue"    value={`NPR ${(stats?.totalRevenue || 0).toLocaleString()}`}   icon={DollarSign}   accent="emerald" />
+        <StatCard label="Today Revenue"    value={`NPR ${(stats?.todayRevenue || 0).toLocaleString()}`}    icon={TrendingUp}   accent="cyan" />
+        <StatCard label="Active Bookings"  value={stats?.activeReservations || 0}                          icon={Activity}     accent="blue" />
+        <StatCard label="Total Users"      value={stats?.totalUsers || 0}                                  icon={Users}        accent="violet" />
+        <StatCard label="No-Shows"         value={stats?.noShowCount || 0}                                 icon={AlertTriangle} accent="amber" sub="all time" />
+        <StatCard label="Pending Refunds"  value={stats?.pendingRefundsCount || 0}                         icon={RotateCcw}    accent="rose" />
+      </div>
+
+      {/* ── Utilization bar + spot breakdown ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Utilization */}
+        <div className="md:col-span-2 rounded-2xl bg-[#0c0c0e] border border-white/[0.06] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Lot Utilization</p>
+              <p className="text-2xl font-black text-white mt-0.5">{utilizationPct}%</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-slate-600">Total capacity</p>
+              <p className="text-sm font-bold text-white">{stats?.totalSpots || 0} spots</p>
+            </div>
+          </div>
+          {/* Progress bar */}
+          <div className="h-3 rounded-full bg-white/[0.05] overflow-hidden mb-3">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-1000"
+              style={{ width: `${utilizationPct}%` }}
+            />
+          </div>
+          {/* Legend */}
+          <div className="grid grid-cols-3 gap-3 mt-4">
+            {[
+              { label: 'Available', value: stats?.availableSpots || 0, color: 'bg-emerald-400' },
+              { label: 'Reserved',  value: stats?.reservedSpots  || 0, color: 'bg-blue-400' },
+              { label: 'Occupied',  value: stats?.occupiedSpots  || 0, color: 'bg-orange-400' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${color} shrink-0`} />
+                <div>
+                  <p className="text-sm font-bold text-white">{value}</p>
+                  <p className="text-[9px] text-slate-600 uppercase tracking-wide">{label}</p>
+                </div>
               </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">{card.value}</p>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{card.label}</p>
-            </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* ─── 3 Large Action Buttons ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        {/* QR Scanner */}
-        <button
-          onClick={() => navigate('/admin/qr-scanner')}
-          className="group relative overflow-hidden rounded-2xl py-5 px-6 md:py-6 md:px-8 text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-xl shadow-blue-600/20 hover:shadow-blue-500/30"
-        >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-8 translate-x-8 group-hover:scale-150 transition-transform duration-500" />
-          <div className="relative z-10 flex flex-col gap-3">
-            <Camera size={28} className="text-blue-200" />
-            <span className="text-lg md:text-xl font-bold text-white tracking-tight">QR Scanner</span>
-            <span className="text-blue-200/70 text-xs font-medium">Scan for check-in / check-out</span>
-          </div>
-        </button>
-
-        {/* View Reservations */}
-        <button
-          onClick={() => navigate('/admin/reservations')}
-          className="group relative overflow-hidden rounded-2xl py-5 px-6 md:py-6 md:px-8 text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-gradient-to-br from-emerald-600 to-green-700 hover:from-emerald-500 hover:to-green-600 shadow-xl shadow-emerald-600/20 hover:shadow-emerald-500/30"
-        >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-8 translate-x-8 group-hover:scale-150 transition-transform duration-500" />
-          <div className="relative z-10 flex flex-col gap-3">
-            <ClipboardList size={28} className="text-emerald-200" />
-            <span className="text-lg md:text-xl font-bold text-white tracking-tight">View Reservations</span>
-            <span className="text-emerald-200/70 text-xs font-medium">Browse all user bookings</span>
-          </div>
-        </button>
-
-        {/* Manage Parking Spots */}
-        <button
-          onClick={() => navigate('/admin/manage-spots')}
-          className="group relative overflow-hidden rounded-2xl py-5 px-6 md:py-6 md:px-8 text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] bg-gradient-to-br from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 shadow-xl shadow-orange-500/20 hover:shadow-orange-400/30"
-        >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-8 translate-x-8 group-hover:scale-150 transition-transform duration-500" />
-          <div className="relative z-10 flex flex-col gap-3">
-            <ParkingSquare size={28} className="text-orange-200" />
-            <span className="text-lg md:text-xl font-bold text-white tracking-tight">Manage Parking Spots</span>
-            <span className="text-orange-200/70 text-xs font-medium">Add, edit, or remove spots</span>
-          </div>
-        </button>
-      </div>
-
-      {/* ─── Recent Bookings Table ─── */}
-      <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] overflow-hidden shadow-lg">
-        <div className="px-6 py-5 border-b border-white/[0.06] flex items-center justify-between">
+        {/* Overstay revenue card */}
+        <div className="rounded-2xl bg-[#0c0c0e] border border-orange-500/15 p-5 flex flex-col justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white">Recent Bookings</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Last 5 reservations</p>
+            <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-3">
+              <Clock size={16} className="text-orange-400" />
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Today Overstay</p>
+            <p className="text-2xl font-black text-white mt-1">
+              NPR {(stats?.todayOverstayRevenue || 0).toLocaleString()}
+            </p>
+          </div>
+          <div className="mt-4 pt-4 border-t border-white/[0.05] flex items-center justify-between">
+            <p className="text-[10px] text-slate-600">Users with debt</p>
+            <p className="text-sm font-bold text-orange-400">{stats?.usersWithDebt || 0}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Quick actions ── */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-600 mb-3">Quick Actions</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <ActionCard
+            label="QR Scanner"
+            desc="Check-in or check-out via QR"
+            icon={QrCode}
+            onClick={() => navigate('/admin/qr-scanner')}
+            gradient="bg-gradient-to-br from-blue-600 to-blue-800"
+            shadow="shadow-xl shadow-blue-900/30"
+          />
+          <ActionCard
+            label="Reservations"
+            desc="View and manage all bookings"
+            icon={ClipboardList}
+            onClick={() => navigate('/admin/reservations')}
+            gradient="bg-gradient-to-br from-emerald-600 to-teal-800"
+            shadow="shadow-xl shadow-emerald-900/30"
+          />
+          <ActionCard
+            label="Manage Spots"
+            desc="Add, edit, or deactivate spots"
+            icon={ParkingSquare}
+            onClick={() => navigate('/admin/manage-spots')}
+            gradient="bg-gradient-to-br from-violet-600 to-purple-800"
+            shadow="shadow-xl shadow-violet-900/30"
+          />
+        </div>
+      </div>
+
+      {/* ── Recent bookings ── */}
+      <div className="rounded-2xl bg-[#0c0c0e] border border-white/[0.06] overflow-hidden">
+        <div className="px-6 py-4 border-b border-white/[0.05] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CalendarCheck size={15} className="text-cyan-400" />
+            <h2 className="text-sm font-extrabold text-white">Recent Reservations</h2>
+            <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] font-bold text-slate-500">{recentBookings.length}</span>
           </div>
           <button
             onClick={() => navigate('/admin/reservations')}
-            className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
+            className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-400 hover:text-cyan-300 transition-colors"
           >
-            View All →
+            View All <ArrowRight size={12} />
           </button>
         </div>
 
@@ -208,106 +261,76 @@ const AdminDashboard = () => {
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/[0.04]">
-                <th className="text-left px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-600">User</th>
-                <th className="text-left px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-600">Spot</th>
-                <th className="text-left px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-600">Amount</th>
-                <th className="text-left px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-600">Status</th>
-                <th className="text-left px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-600">Time</th>
+                {['Customer', 'Spot', 'Amount', 'Status', 'Date'].map((h) => (
+                  <th key={h} className="text-left px-6 py-3 text-[9px] font-bold uppercase tracking-widest text-slate-700">{h}</th>
+                ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-white/[0.03]">
               {recentBookings.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center text-slate-600 text-sm">
-                    No bookings found.
+                  <td colSpan="5" className="px-6 py-14 text-center text-slate-700 text-sm">No reservations yet.</td>
+                </tr>
+              ) : recentBookings.map((b) => (
+                <tr key={b._id} className="hover:bg-white/[0.015] transition-colors group">
+                  <td className="px-6 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-slate-700 to-slate-800 border border-white/8 flex items-center justify-center text-white text-[10px] font-black shrink-0">
+                        {b.user?.name?.charAt(0)?.toUpperCase() || '?'}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white truncate max-w-[130px]">{b.user?.name || 'Unknown'}</p>
+                        <p className="text-[10px] text-slate-700 truncate max-w-[130px]">{b.user?.email || ''}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-3.5">
+                    <p className="text-sm font-medium text-slate-300 truncate max-w-[120px]">
+                      {b.parkingSpot?.locationName || 'N/A'}
+                    </p>
+                    <p className="text-[10px] text-slate-700">#{b.parkingSpot?.spotNumber || '—'}</p>
+                  </td>
+                  <td className="px-6 py-3.5">
+                    <span className="text-sm font-bold text-white">
+                      NPR {b.amountInfo?.finalAmount ?? b.amountInfo?.totalAmount ?? 0}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3.5">
+                    <span className={statusBadge(b.status)}>{b.status}</span>
+                  </td>
+                  <td className="px-6 py-3.5">
+                    <p className="text-sm text-slate-400">{new Date(b.createdAt || b.reservationTime).toLocaleDateString()}</p>
+                    <p className="text-[10px] text-slate-700">
+                      {new Date(b.createdAt || b.reservationTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
                   </td>
                 </tr>
-              ) : (
-                recentBookings.map((booking) => (
-                  <tr
-                    key={booking._id}
-                    className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-white/10 flex items-center justify-center text-cyan-400 text-xs font-bold">
-                          {booking.user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                        </div>
-                        <span className="text-sm font-semibold text-white truncate max-w-[140px]">
-                          {booking.user?.name || 'Unknown User'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm font-medium text-slate-300">
-                        {booking.parkingSpot?.spotNumber
-                          ? `#${booking.parkingSpot.spotNumber}`
-                          : booking.parkingSpot?.locationName || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm font-bold text-white">
-                        Rs. {booking.totalAmount || booking.amountInfo?.totalAmount || 0}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide border ${getStatusBadge(
-                          booking.status
-                        )}`}
-                      >
-                        {booking.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-slate-400">
-                        {new Date(booking.reservationTime || booking.createdAt).toLocaleDateString()}
-                      </div>
-                      <div className="text-[10px] text-slate-600">
-                        {new Date(booking.reservationTime || booking.createdAt).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
 
-        {/* Mobile card list */}
+        {/* Mobile list */}
         <div className="md:hidden divide-y divide-white/[0.04]">
           {recentBookings.length === 0 ? (
-            <div className="px-6 py-12 text-center text-slate-600 text-sm">No bookings found.</div>
-          ) : (
-            recentBookings.map((booking) => (
-              <div key={booking._id} className="px-5 py-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-400 text-xs font-bold">
-                      {booking.user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                    </div>
-                    <span className="text-sm font-semibold text-white">{booking.user?.name || 'Unknown'}</span>
-                  </div>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${getStatusBadge(
-                      booking.status
-                    )}`}
-                  >
-                    {booking.status}
-                  </span>
+            <div className="p-8 text-center text-slate-700 text-sm">No reservations yet.</div>
+          ) : recentBookings.map((b) => (
+            <div key={b._id} className="px-5 py-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-slate-800 border border-white/8 flex items-center justify-center text-white text-xs font-black shrink-0">
+                  {b.user?.name?.charAt(0)?.toUpperCase() || '?'}
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>Spot {booking.parkingSpot?.spotNumber || 'N/A'}</span>
-                  <span className="font-bold text-white">
-                    Rs. {booking.totalAmount || booking.amountInfo?.totalAmount || 0}
-                  </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{b.user?.name || 'Unknown'}</p>
+                  <p className="text-[10px] text-slate-600">{b.parkingSpot?.locationName || '—'}</p>
                 </div>
               </div>
-            ))
-          )}
+              <div className="text-right shrink-0">
+                <span className={statusBadge(b.status)}>{b.status}</span>
+                <p className="text-[10px] text-slate-600 mt-1">NPR {b.amountInfo?.totalAmount ?? 0}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
