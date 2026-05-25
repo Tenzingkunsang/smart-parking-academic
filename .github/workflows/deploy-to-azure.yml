@@ -1,0 +1,63 @@
+name: Deploy to Azure Web App
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ── 1. Build React frontend ─────────────────────────────────────────────
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend
+        env:
+          REACT_APP_API_URL: https://smartparknepal.azurewebsites.net/api/v1
+          REACT_APP_SOCKET_URL: https://smartparknepal.azurewebsites.net
+          GENERATE_SOURCEMAP: 'false'
+        run: npm run build
+        working-directory: frontend
+
+      # ── 2. Place React build inside backend/public ──────────────────────────
+      - name: Copy frontend build into backend/public
+        run: |
+          rm -rf backend/public
+          cp -r frontend/build backend/public
+
+      # ── 3. Install backend production deps ─────────────────────────────────
+      - name: Install backend dependencies (prod only)
+        run: npm ci --omit=dev
+        working-directory: backend
+
+      # ── 4. Zip backend (includes node_modules + public/) ───────────────────
+      - name: Create deployment package
+        run: |
+          cd backend
+          zip -r ../deploy.zip . \
+            --exclude "*.test.js" \
+            --exclude "__tests__/*" \
+            --exclude ".env*"
+
+      # ── 5. Deploy zip to App Service (no AZURE_CREDENTIALS needed) ─────────
+      # Uses the publish profile downloaded from Azure Portal / CLI.
+      # No Azure AD service-principal required — works on student subscriptions.
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'smartparknepal'
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: 'deploy.zip'

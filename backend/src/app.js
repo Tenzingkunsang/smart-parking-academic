@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
 const requestContext = require('./middleware/requestContext');
@@ -85,7 +86,31 @@ function createApp() {
   });
 
   app.get('/', (req, res) => {
+    // In production, the React build is served from /public. Only return JSON
+    // if the build folder doesn't exist (e.g., local dev API-only mode).
+    const indexPath = path.join(__dirname, '..', 'public', 'index.html');
+    const fs = require('fs');
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
     res.json({ message: 'SmartPark API is running' });
+  });
+
+  // ─── Serve React build (production only) ──────────────────────────────────
+  // The deploy workflow copies frontend/build → backend/public before zipping.
+  // In dev (no public/ folder) this middleware is a no-op.
+  const publicDir = path.join(__dirname, '..', 'public');
+  app.use(express.static(publicDir, { index: false }));
+
+  // SPA catch-all: any non-API, non-asset route returns index.html so that
+  // React Router handles client-side navigation.
+  app.get('*', (req, res, next) => {
+    const indexPath = path.join(publicDir, 'index.html');
+    const fs = require('fs');
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+    next(); // fall through to notFound middleware in dev
   });
 
   app.use(notFound);
