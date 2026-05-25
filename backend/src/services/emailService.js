@@ -36,7 +36,15 @@ class EmailService {
         pass: process.env.EMAIL_PASS,
       },
     });
-    console.log('[Email] SMTP configured');
+    // Verify credentials at startup so a wrong Gmail App Password is caught
+    // immediately in logs rather than failing silently on every email send.
+    this.transporter.verify((err) => {
+      if (err) {
+        console.error(`[Email] SMTP auth failed: ${err.message}. Check EMAIL_USER / EMAIL_PASS (Gmail requires an App Password, not your regular password).`);
+      } else {
+        console.log(`[Email] SMTP ready — sending as ${process.env.EMAIL_USER}`);
+      }
+    });
   }
 
   async _setupEthereal() {

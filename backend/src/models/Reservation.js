@@ -168,7 +168,10 @@ const reservationSchema = new mongoose.Schema({
   lastNotifiedAt: { type: Date, default: null },
   // BUG-L3: separate field definitions onto individual lines for readability.
   overtimeApplied: { type: Boolean, default: false },
-  penaltyApplied:  { type: Boolean, default: false }
+  penaltyApplied:  { type: Boolean, default: false },
+  // Admin note — persisted so it survives saves. Bug: was previously stored on
+  // a virtual field (_adminNote) and silently dropped on every save.
+  adminNote: { type: String, default: '' }
 }, {
   timestamps: true,
   toJSON: { virtuals: true }

@@ -354,34 +354,38 @@ router.post('/reservations/:id/checkin', protect, businessOwnerAuth, async (req,
     updateSpotStatusFlags(spot);
     await spot.save();
 
-    reservation.checkInTime   = new Date();
+    const now = new Date();
+    reservation.checkInTime   = now;
     reservation.status        = 'checked-in';
     reservation.lifecycleStage = 'active';
     reservation.activeSession = {
-      qrScannedAt:       new Date(),
+      qrScannedAt:       now,
       adminScannedBy:    req.user.id,
-      billingStartTime:  new Date(),
-      estimatedCheckOut: new Date(Date.now() + reservation.duration * 60000),
+      billingStartTime:  now,
+      estimatedCheckOut: new Date(now.getTime() + reservation.duration * 60000),
     };
     await reservation.save();
-    await recalculateUserBehavior(reservation.user._id);
-
-    try {
-      await notificationService.sendNotification(
-        reservation.user._id,
-        'Checked In',
-        `You have been checked in to Spot #${spot.spotNumber} at ${spot.locationName}. Your parking timer has started.`,
-        'admin_action',
-        { reservationId: reservation._id, spotNumber: spot.spotNumber }
-      );
-    } catch (notifErr) {
-      logger.error('business_checkin_notification_failed', { message: notifErr.message });
-    }
 
     res.json({
       success: true,
       action: 'checkin',
       data: { spotNumber: spot.spotNumber, location: spot.locationName, checkInTime: reservation.checkInTime },
+    });
+
+    // Fire-and-forget: defer slow ops after response is sent.
+    setImmediate(async () => {
+      try { await recalculateUserBehavior(reservation.user._id); } catch (e) { logger.error('business_checkin_behavior_failed', { message: e.message }); }
+      try {
+        await notificationService.sendNotification(
+          reservation.user._id,
+          'Checked In',
+          `You have been checked in to Spot #${spot.spotNumber} at ${spot.locationName}. Your parking timer has started.`,
+          'admin_action',
+          { reservationId: reservation._id, spotNumber: spot.spotNumber }
+        );
+      } catch (notifErr) {
+        logger.error('business_checkin_notification_failed', { message: notifErr.message });
+      }
     });
   } catch (err) {
     logger.error('business_checkin_error', { message: err.message });
@@ -436,27 +440,6 @@ router.post('/reservations/:id/checkout', protect, businessOwnerAuth, async (req
     };
     await reservation.save();
 
-    if (billing.overstayCharge > 0) {
-      await User.findByIdAndUpdate(reservation.user._id, { $inc: { overstayDebt: billing.overstayCharge } });
-    }
-
-    await recalculateUserBehavior(reservation.user._id);
-
-    try {
-      const msg = billing.overstayCharge > 0
-        ? `You've been checked out. Parked: ${billing.actualMinutes} min, overstay: ${billing.overstayMinutes} min. Overstay charge: NPR ${billing.overstayCharge}. Total: NPR ${billing.finalAmount}.`
-        : `You've been checked out. Parked: ${billing.actualMinutes} min. Total: NPR ${billing.finalAmount}.`;
-      await notificationService.sendNotification(
-        reservation.user._id,
-        'Checked Out',
-        msg,
-        billing.overstayCharge > 0 ? 'overstay_alert' : 'admin_action',
-        { reservationId: reservation._id, finalAmount: billing.finalAmount }
-      );
-    } catch (notifErr) {
-      logger.error('business_checkout_notification_failed', { message: notifErr.message });
-    }
-
     res.json({
       success: true,
       action: 'checkout',
@@ -466,6 +449,29 @@ router.post('/reservations/:id/checkout', protect, businessOwnerAuth, async (req
         overstayCharge: billing.overstayCharge,
         finalAmount: billing.finalAmount,
       },
+    });
+
+    // Fire-and-forget: defer slow ops after response is sent.
+    setImmediate(async () => {
+      if (billing.overstayCharge > 0) {
+        try { await User.findByIdAndUpdate(reservation.user._id, { $inc: { overstayDebt: billing.overstayCharge } }); }
+        catch (e) { logger.error('business_checkout_debt_failed', { message: e.message }); }
+      }
+      try { await recalculateUserBehavior(reservation.user._id); } catch (e) { logger.error('business_checkout_behavior_failed', { message: e.message }); }
+      try {
+        const msg = billing.overstayCharge > 0
+          ? `You've been checked out. Parked: ${billing.actualMinutes} min, overstay: ${billing.overstayMinutes} min. Overstay charge: NPR ${billing.overstayCharge}. Total: NPR ${billing.finalAmount}.`
+          : `You've been checked out. Parked: ${billing.actualMinutes} min. Total: NPR ${billing.finalAmount}.`;
+        await notificationService.sendNotification(
+          reservation.user._id,
+          'Checked Out',
+          msg,
+          billing.overstayCharge > 0 ? 'overstay_alert' : 'admin_action',
+          { reservationId: reservation._id, finalAmount: billing.finalAmount }
+        );
+      } catch (notifErr) {
+        logger.error('business_checkout_notification_failed', { message: notifErr.message });
+      }
     });
   } catch (err) {
     logger.error('business_checkout_error', { message: err.message });
@@ -498,11 +504,12 @@ router.post('/reservations/:id/force-cancel', protect, businessOwnerAuth, async 
     const wasCheckedIn = ['checked-in', 'overstay'].includes(priorStatus);
     const qty = reservation.quantity || 1;
 
+    // Aggregation pipeline ensures counters never go below 0.
     await ParkingSpot.findByIdAndUpdate(
       reservation.parkingSpot._id,
       wasCheckedIn
-        ? { $inc: { availableSpaces: qty, occupiedSpaces: -qty } }
-        : { $inc: { availableSpaces: qty, reservedSpaces: -qty } }
+        ? [{ $set: { availableSpaces: { $add: ['$availableSpaces', qty] }, occupiedSpaces: { $max: [0, { $subtract: ['$occupiedSpaces', qty] }] } } }]
+        : [{ $set: { availableSpaces: { $add: ['$availableSpaces', qty] }, reservedSpaces: { $max: [0, { $subtract: ['$reservedSpaces', qty] }] } } }]
     );
 
     reservation.status = 'cancelled';

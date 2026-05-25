@@ -92,7 +92,7 @@ const BusinessDashboard = () => {
       });
       const d = await r.json();
       if (d.success) setStats(d.data);
-      else setError(d.message || 'Failed to load stats');
+      else setError(r.status === 403 ? '__pending_verification__' : (d.message || 'Failed to load stats'));
     } catch {
       setError('Network error');
     } finally {
@@ -108,6 +108,23 @@ const BusinessDashboard = () => {
         <Loader2 className="animate-spin text-violet-400" size={24} />
       </div>
       <p className="text-slate-500 text-sm font-semibold">Loading dashboard…</p>
+    </div>
+  );
+
+  if (error === '__pending_verification__') return (
+    <div className="flex flex-col items-center justify-center py-24 gap-6 text-center">
+      <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+        <Clock size={36} className="text-amber-400" />
+      </div>
+      <div className="space-y-2 max-w-sm">
+        <h2 className="text-xl font-black text-white">Account Pending Verification</h2>
+        <p className="text-sm text-slate-400 leading-relaxed">
+          Your business account is awaiting admin approval. You'll receive a notification once it's verified and you can start listing parking spots.
+        </p>
+      </div>
+      <div className="px-5 py-3 rounded-2xl bg-amber-500/5 border border-amber-500/20 text-xs text-amber-300 font-semibold">
+        ⏳ Typical approval time: 1–2 business days
+      </div>
     </div>
   );
 

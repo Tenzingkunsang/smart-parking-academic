@@ -562,10 +562,8 @@ router.put('/reservations/:id', protect, adminAuth, async (req, res) => {
     }
 
     if (adminNote !== undefined) {
-      // Store admin notes in noShowInfo.reason field (repurposed) or a dedicated field.
-      // We'll use a safe path that doesn't break schema.
-      reservation._adminNote = adminNote; // virtual, won't persist unless schema has it
-      changes.push(`adminNote recorded`);
+      reservation.adminNote = String(adminNote).trim();
+      changes.push(`adminNote updated`);
     }
 
     if (overrideFinalAmount !== undefined) {

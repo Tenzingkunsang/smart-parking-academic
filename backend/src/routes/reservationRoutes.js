@@ -549,9 +549,14 @@ router.put(
         await reservation.save(sessionOpt);
 
         const qty = reservation.quantity || 1;
+        // Use aggregation pipeline so reservedSpaces is floor-clamped at 0.
+        // Plain $inc could drive the counter negative if called twice on the same spot.
         await ParkingSpot.updateOne(
           { _id: reservation.parkingSpot._id },
-          { $inc: { availableSpaces: qty, reservedSpaces: -qty } },
+          [{ $set: {
+            availableSpaces: { $add: ['$availableSpaces', qty] },
+            reservedSpaces:  { $max: [0, { $subtract: ['$reservedSpaces', qty] }] },
+          }}],
           sessionOpt
         );
         });
