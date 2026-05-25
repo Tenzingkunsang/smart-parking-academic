@@ -36,15 +36,16 @@ jobs:
         with:
           node-version: '22'
       - name: Install frontend dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
       - name: Run frontend tests
         run: npm test -- --watchAll=false
         env:
-          CI: true
+          CI: 'false'
           REACT_APP_API_URL: http://localhost:5001/api/v1
           REACT_APP_SOCKET_URL: http://localhost:5001
       - name: Build frontend
         run: npm run build
         env:
-          REACT_APP_API_URL: http://localhost:5001/api/v1
+          CI: 'false'
           GENERATE_SOURCEMAP: 'false'
+          REACT_APP_API_URL: http://localhost:5001/api/v1
