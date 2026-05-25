@@ -20,32 +20,30 @@ jobs:
           node-version: '22'
 
       # ── 1. Build React frontend ──────────────────────────────────────────────
-      - name: Install and build frontend
+      - name: Build frontend
         run: |
           cd frontend
-          npm install --no-audit --no-fund
+          npm install
           npm run build
         env:
           REACT_APP_API_URL: https://smartparknepal.azurewebsites.net/api/v1
           REACT_APP_SOCKET_URL: https://smartparknepal.azurewebsites.net
           GENERATE_SOURCEMAP: 'false'
+          CI: 'false'
 
-      # ── 2. Copy React build into backend/public (Express serves it) ──────────
-      - name: Copy frontend build into backend/public
+      # ── 2. Move React build into backend/public ──────────────────────────────
+      - name: Sync frontend build into backend/public
         run: |
-          rm -rf backend/public
-          cp -r frontend/build backend/public
+          mkdir -p backend/public
+          cp -r frontend/build/. backend/public/
 
       # ── 3. Install backend production dependencies ────────────────────────────
       - name: Install backend dependencies
         run: |
           cd backend
-          npm install --omit=dev --no-audit --no-fund
+          npm install --production
 
-      # ── 4. Deploy ./backend to Azure App Service via Publish Profile ──────────
-      # package: './backend' is correct — it contains package.json + the React
-      # build (in backend/public/) + production node_modules.
-      # Azure App Service reads its own package.json and runs: node server.js
+      # ── 4. Deploy backend folder to Azure App Service ────────────────────────
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
