@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MapPin, X, ChevronRight, Zap, LayoutGrid, List, Loader2, Navigation, ArrowRight, CreditCard, Wallet, Accessibility, Umbrella, Clock, BatteryCharging, ChevronDown } from 'lucide-react';
+import { Search, MapPin, X, ChevronRight, Zap, LayoutGrid, List, Loader2, Navigation, ArrowRight, CreditCard, Wallet, Accessibility, Umbrella, Clock, BatteryCharging, ChevronDown, SlidersHorizontal, Car, Bike } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { io } from 'socket.io-client';
 import parkingService from '../../services/parkingService';
@@ -34,13 +34,15 @@ const ParkingSpots = () => {
   const [activeBooking, setActiveBooking] = useState(null);
   const [mapExpanded, setMapExpanded] = useState(false);
   const [modalMode, setModalMode] = useState('book');
+  const [showFilters, setShowFilters] = useState(false);
+  const [featuresFilter, setFeaturesFilter] = useState([]);
 
   // Location list state
   const [selectedLocationName, setSelectedLocationName] = useState(null);
 
   // FEATURE 6: LIVE CALCULATION STATE
   const [bookingDuration, setBookingDuration] = useState(60); 
-  const [paymentMethod, setPaymentMethod] = useState('wallet');
+  const [paymentMethod, setPaymentMethod] = useState('khalti');
   const [selectedSpot, setSelectedSpot] = useState(null);
 
   const navigate = useNavigate();
@@ -100,16 +102,17 @@ const ParkingSpots = () => {
     const q = searchQuery.toLowerCase().trim();
     return spots.filter(s => {
       if (filter !== 'all' && s.status !== filter) return false;
-      if (vehicleFilter !== 'all' && s.vehicleType !== vehicleFilter) return false;
+      if (vehicleFilter !== 'all' && !(s.vehicleTypes || []).includes(vehicleFilter)) return false;
       if (!selectedLocationName && q && !s.locationName.toLowerCase().includes(q) && !s.address?.toLowerCase().includes(q)) return false;
       if (priceMax && s.price > parseInt(priceMax)) return false;
+      if (featuresFilter.length > 0 && !featuresFilter.every(f => (s.features || []).includes(f))) return false;
       return true;
     }).map(s => {
       let d = null;
       if (userPosition && s.location?.lat != null) d = haversineMeters(userPosition.lat, userPosition.lng, s.location.lat, s.location.lng);
       return { ...s, distanceMeters: d };
     });
-  }, [spots, filter, vehicleFilter, searchQuery, priceMax, userPosition, selectedLocationName]);
+  }, [spots, filter, vehicleFilter, searchQuery, priceMax, featuresFilter, userPosition, selectedLocationName]);
 
   const clusters = useMemo(() => clusterSpotsByGrid(filteredSpots, 0.012), [filteredSpots]);
 
@@ -294,6 +297,115 @@ const ParkingSpots = () => {
                </div>
             </div>
           </header>
+
+          {/* FILTER BAR */}
+          {!selectedLocationName && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Filter toggle button */}
+                <button
+                  onClick={() => setShowFilters(v => !v)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${showFilters ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400' : 'bg-white/[0.04] border-white/[0.08] text-slate-400 hover:text-white'}`}
+                >
+                  <SlidersHorizontal size={14} /> Filters
+                  {(filter !== 'all' || vehicleFilter !== 'all' || priceMax || featuresFilter.length > 0) && (
+                    <span className="w-4 h-4 rounded-full bg-cyan-500 text-black text-[9px] font-black flex items-center justify-center">
+                      {[filter !== 'all', vehicleFilter !== 'all', !!priceMax, ...featuresFilter].filter(Boolean).length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Availability quick pills */}
+                {['all', 'available', 'full'].map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border capitalize ${filter === f ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400' : 'bg-white/[0.04] border-white/[0.08] text-slate-400 hover:text-white'}`}
+                  >
+                    {f === 'all' ? 'All' : f === 'available' ? '✓ Available' : '✗ Full'}
+                  </button>
+                ))}
+
+                {/* Clear all */}
+                {(filter !== 'all' || vehicleFilter !== 'all' || priceMax || featuresFilter.length > 0) && (
+                  <button
+                    onClick={() => { setFilter('all'); setVehicleFilter('all'); setPriceMax(''); setFeaturesFilter([]); }}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400 border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 transition-all"
+                  >
+                    <X size={12} /> Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Expanded filters */}
+              {showFilters && (
+                <div className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 space-y-5 animate-in slide-in-from-top-2 duration-200">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                    {/* Vehicle type */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Vehicle Type</span>
+                      <div className="flex gap-2">
+                        {[
+                          { val: 'all', label: 'All' },
+                          { val: 'car', label: 'Car', Icon: Car },
+                          { val: 'motorcycle', label: 'Bike', Icon: Bike },
+                        ].map(({ val, label, Icon }) => (
+                          <button
+                            key={val}
+                            onClick={() => setVehicleFilter(val)}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border ${vehicleFilter === val ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400' : 'bg-white/[0.04] border-white/[0.08] text-slate-400 hover:text-white'}`}
+                          >
+                            {Icon && <Icon size={13} />} {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Max price */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Max Price / hr</span>
+                      <div className="flex gap-2 flex-wrap">
+                        {['', '20', '40', '60', '100'].map(p => (
+                          <button
+                            key={p}
+                            onClick={() => setPriceMax(p)}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border ${priceMax === p ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400' : 'bg-white/[0.04] border-white/[0.08] text-slate-400 hover:text-white'}`}
+                          >
+                            {p ? `Rs. ${p}` : 'Any'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Features */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Features</span>
+                      <div className="flex gap-2 flex-wrap">
+                        {[
+                          { val: 'covered', Icon: Umbrella, label: 'Covered' },
+                          { val: '24_hours', Icon: Clock, label: '24/7' },
+                          { val: 'handicap', Icon: Accessibility, label: 'Accessible' },
+                          { val: 'ev_charging', Icon: BatteryCharging, label: 'EV' },
+                        ].map(({ val, Icon, label }) => {
+                          const active = featuresFilter.includes(val);
+                          return (
+                            <button
+                              key={val}
+                              onClick={() => setFeaturesFilter(prev => active ? prev.filter(f => f !== val) : [...prev, val])}
+                              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border ${active ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400' : 'bg-white/[0.04] border-white/[0.08] text-slate-400 hover:text-white'}`}
+                            >
+                              <Icon size={12} /> {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* VISUAL GRID / LOCATIONS LIST */}
           <div className="space-y-6">
@@ -514,17 +626,17 @@ const ParkingSpots = () => {
                   <div className="space-y-2">
                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 ml-1">Method</span>
                      <div className="flex gap-2">
-                        {['wallet', 'khalti'].map(m => (
-                          <button 
+                        {['khalti', 'cash'].map(m => (
+                          <button
                             key={m}
                             onClick={() => setPaymentMethod(m)}
                             className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-                              paymentMethod === m 
-                                ? 'bg-gradient-to-r from-cyan-400 to-cyan-500 text-black shadow-lg shadow-cyan-500/20 scale-105 border-transparent' 
+                              paymentMethod === m
+                                ? 'bg-gradient-to-r from-cyan-400 to-cyan-500 text-black shadow-lg shadow-cyan-500/20 scale-105 border-transparent'
                                 : 'bg-white/[0.03] text-slate-400 border border-white/10 hover:text-white hover:bg-white/[0.06]'
                             }`}
                           >
-                            {m === 'wallet' ? <Wallet size={18} /> : <CreditCard size={18} />}
+                            {m === 'khalti' ? <CreditCard size={18} /> : <Wallet size={18} />}
                           </button>
                         ))}
                      </div>
