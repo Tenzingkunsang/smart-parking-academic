@@ -283,7 +283,7 @@ const TicketPage = () => {
                <div className="py-10 flex flex-col items-center gap-8 bg-white/[0.02] border border-white/5 rounded-[2.5rem]">
                   <div className="bg-white p-6 rounded-3xl shadow-[0_0_50px_rgba(255,255,255,0.05)]">
                      {qrValue ? (
-                        <QRCodeCanvas ref={qrCanvasRef} value={qrValue} size={180} level="H" includeMargin={true} />
+                        <QRCodeCanvas ref={qrCanvasRef} value={qrValue} size={280} level="M" includeMargin={true} />
                      ) : (
                         <Loader2 className="animate-spin text-slate-300" size={40} />
                      )}
@@ -296,6 +296,14 @@ const TicketPage = () => {
                      <p className="text-[10px] text-slate-500 font-medium max-w-[220px] mx-auto italic">
                         Scan temporal token at gate terminal to authorize entry protocol.
                      </p>
+                     {qrValue && (
+                       <button
+                         onClick={() => { navigator.clipboard.writeText(qrValue); }}
+                         className="mt-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+                       >
+                         Copy Token for Manual Entry
+                       </button>
+                     )}
                   </div>
                </div>
             )}
@@ -367,7 +375,7 @@ const TicketPage = () => {
          </div>
       </Card>
 
-      {!isCancelled && cancelStatus?.canCancel && (
+      {!isCancelled && status === 'reserved' && cancelStatus?.canCancel && (
          <button onClick={() => setShowCancelModal(true)} className="text-[10px] font-black uppercase tracking-[0.3em] text-red-500/40 hover:text-red-500 transition-colors">
             Abort Permit Allocation
          </button>
