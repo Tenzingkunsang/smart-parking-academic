@@ -86,7 +86,7 @@ const Login = () => {
       const response = await fetch(`${API_BASE}/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: credentialResponse.credential })
+        body: JSON.stringify({ credential: credentialResponse.credential, clientId: process.env.REACT_APP_GOOGLE_CLIENT_ID })
       });
       const data = await response.json();
       if (!data.success) {
