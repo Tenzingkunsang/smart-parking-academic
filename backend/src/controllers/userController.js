@@ -93,7 +93,7 @@ exports.changePassword = async (req, res) => {
   }
 };
 
-// --- FEATURE 4: ADMIN RESET VIOLATIONS ---
+// Admin resets a user's violation count and removes their penalty
 exports.resetViolations = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -104,9 +104,8 @@ exports.resetViolations = async (req, res) => {
     user.penaltyExpiry = null;
     await user.save();
     
-    res.json({ success: true, message: 'Grid violations reset' });
+    res.json({ success: true, message: 'Violations reset successfully' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Registry reset failed' });
+    res.status(500).json({ success: false, message: 'Failed to reset violations' });
   }
 };
-// --- END ADD ---

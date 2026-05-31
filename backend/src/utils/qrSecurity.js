@@ -1,29 +1,11 @@
-/**
- * qrSecurity.js — signed QR payloads for the reservation lifecycle.
- *
- * Defends against the replay/fraud scenarios:
- *   - A user crafts arbitrary JSON and tries to check in without a real booking.
- *     → Server-issued HMAC over the payload makes forgery infeasible without the
- *       QR_SIGNING_SECRET.
- *   - A QR is screenshotted at booking and reused months later.
- *     → Each payload carries an `iat` (issued-at) and `exp` (expiry). The verify
- *       step rejects expired signatures.
- *   - The same signed QR is scanned twice to check in twice.
- *     → The reservation status machine already enforces this (a reservation in
- *       'checked-in' or 'completed' state cannot be checked in again). We also
- *       carry a `nonce` so audit logs can detect duplicates.
- *
- * Layout: payload = base64url(json) + '.' + base64url(hmacSha256(payload, secret))
- */
+// QR code security — signs and verifies QR tokens using HMAC-SHA256
+// Format: base64url(payload) + '.' + base64url(signature)
 
 const crypto = require('crypto');
 
-const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;   // 24h — the ticket the user keeps
-// 10 min TTL: gives enough buffer for mobile background JS throttling (iOS throttles
-// timers to ~15 min when backgrounded) while still defeating screenshot replay.
-// TicketPage refreshes every 4 min, so tokens are never older than 4 min in practice.
-const SCAN_TTL_MS = 10 * 60 * 1000;           // 10min — the freshness window for live scans
-const MAX_SCAN_AGE_MS = 10 * 60 * 1000;       // reject signed QRs older than this at scan time
+const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — ticket stays valid all day
+const SCAN_TTL_MS = 10 * 60 * 1000;         // 10 minutes — scanner freshness window
+const MAX_SCAN_AGE_MS = 10 * 60 * 1000;     // reject QRs older than 10 minutes
 
 function getSecret() {
   const secret = process.env.QR_SIGNING_SECRET || process.env.JWT_SECRET;
@@ -42,21 +24,13 @@ const b64urlDecode = (str) => {
   return Buffer.from(base64, 'base64');
 };
 
-/**
- * Build a signed QR payload for a reservation.
- *
- * @param {{ reservationId: string, spotNumber?: number|string, location?: string, ttlMs?: number }} args
- * @returns {string} signed token (`<body>.<sig>`)
- */
+// Creates a signed QR token for a reservation
 function signQrPayload({ reservationId, spotNumber, location, ttlMs = DEFAULT_TTL_MS }) {
   if (!reservationId) throw new Error('reservationId is required');
   const now = Date.now();
   const body = {
     v: 1,
     reservationId: String(reservationId),
-    bookingId: String(reservationId), // legacy alias
-    spotNumber: spotNumber ?? null,
-    location: location ?? null,
     iat: now,
     exp: now + ttlMs,
     nonce: crypto.randomBytes(8).toString('hex'),
@@ -66,21 +40,7 @@ function signQrPayload({ reservationId, spotNumber, location, ttlMs = DEFAULT_TT
   return `${bodyEncoded}.${b64url(sig)}`;
 }
 
-/**
- * Verify a signed QR payload. Throws Error(statusCode, message) on failure.
- *
- * Accepts three input shapes for backward compatibility with QRs already in the wild:
- *   1. The new signed token: '<body>.<sig>'
- *   2. Legacy raw JSON: '{"reservationId":"..."}'  (caller decides whether to allow)
- *   3. Bare reservationId string
- *
- * @param {string} raw  the scanned text
- * @param {{ allowLegacy?: boolean, maxAgeMs?: number }} opts
- *        - maxAgeMs: if set, also rejects signed payloads whose iat is older than this
- *          window (defense against screenshot replay). Use SCAN_TTL_MS at the
- *          scanner endpoint.
- * @returns {{ reservationId: string, spotNumber: any, location: any, iat?: number, exp?: number, nonce?: string, legacy: boolean }}
- */
+// Verifies a scanned QR token — checks signature, expiry, and format
 function verifyQrPayload(raw, { allowLegacy = false, maxAgeMs = null } = {}) {
   if (!raw || typeof raw !== 'string') {
     const err = new Error('Invalid QR payload');
@@ -88,12 +48,9 @@ function verifyQrPayload(raw, { allowLegacy = false, maxAgeMs = null } = {}) {
     throw err;
   }
 
-  // Signed token path.
+  // Handle signed token (format: body.signature)
   if (raw.includes('.') && !raw.trim().startsWith('{')) {
-    // BUG-QR1: raw.split('.') returns all segments. A crafted payload like
-    // '<validBody>.<validSig>.<junk>' would destructure correctly and pass sig
-    // verification since sigEncoded still gets the real sig value. Enforce
-    // exactly two segments so any trailing garbage is rejected immediately.
+    // Must have exactly 2 parts — reject anything with extra segments
     const parts = raw.split('.');
     if (parts.length !== 2 || !parts[0] || !parts[1]) {
       const err = new Error('Malformed signed QR');
@@ -129,9 +86,7 @@ function verifyQrPayload(raw, { allowLegacy = false, maxAgeMs = null } = {}) {
       err.statusCode = 400;
       throw err;
     }
-    // Bug Task-1: scan-time freshness check. The 24h-lived "ticket" QR is fine
-    // for the user's wallet, but the admin scanner should reject anything older
-    // than maxAgeMs (typically 5 minutes) to defeat screenshot replay.
+    // Reject QR if it's older than the allowed scan window (prevents screenshot reuse)
     if (maxAgeMs && body.iat && Date.now() - body.iat > maxAgeMs) {
       const err = new Error(`QR code is stale (older than ${Math.round(maxAgeMs / 60000)} min). Please refresh your ticket and rescan.`);
       err.statusCode = 400;
@@ -140,7 +95,7 @@ function verifyQrPayload(raw, { allowLegacy = false, maxAgeMs = null } = {}) {
     return { ...body, legacy: false };
   }
 
-  // Legacy JSON / bare id path — only if the caller opts in.
+  // Handle old-style QR (plain JSON or bare ID) — only if allowed
   if (!allowLegacy) {
     const err = new Error('QR code is not signed. Please regenerate from your bookings.');
     err.statusCode = 400;
@@ -153,7 +108,7 @@ function verifyQrPayload(raw, { allowLegacy = false, maxAgeMs = null } = {}) {
     if (!reservationId) throw new Error('No reservationId');
     return { reservationId: String(reservationId), legacy: true };
   } catch {
-    // Bare id fallback
+    // Try treating it as a bare MongoDB ID
     if (/^[a-f\d]{24}$/i.test(raw.trim())) {
       return { reservationId: raw.trim(), legacy: true };
     }

@@ -1,16 +1,5 @@
-/**
- * billing.js — single source of truth for reservation checkout billing.
- *
- * Bug H2: previously user-checkout and admin-checkout used different formulas
- * and produced different finalAmounts for identical data. Extracted here so
- * both controllers (and tests) reference the exact same logic.
- *
- * Rules:
- *   - Booked time is paid up-front via reservation.amountInfo.totalAmount.
- *   - First GRACE_MINUTES past the booked window are free.
- *   - Each started hour past grace is billed at hourlyRate * OVERTIME_MULTIPLIER.
- *   - If the user has 3+ active violations, a PENALTY_RATE surcharge is added.
- */
+// Handles checkout billing — overstay charges and penalty calculation
+// Used by both user checkout and admin checkout to keep billing consistent
 
 const GRACE_MINUTES = 15;
 const OVERTIME_MULTIPLIER = 1.5;
@@ -35,8 +24,7 @@ function calculateCheckoutBilling({ reservation, spot, user, checkOutTime }) {
   }
 
   const baseTotal = reservation.amountInfo?.totalAmount || 0;
-  // Charge is billed by started hour — even 1 min past grace = 1 full-hour charge.
-  // Charge is 1.5× the hourly rate.
+  // Even 1 minute past grace counts as a full extra hour
   const overstayHours = overstayMinutes > 0 ? Math.ceil(overstayMinutes / 60) : 0;
   const overstayCharge = overstayHours > 0
     ? Math.round(overstayHours * (hourlyRate || 0) * OVERTIME_MULTIPLIER)

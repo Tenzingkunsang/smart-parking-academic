@@ -58,13 +58,13 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'admin', 'business_owner'],
     default: 'user'
   },
-  // Profile for business_owner accounts
+  // Extra info for business owner accounts
   businessProfile: {
     businessName:    { type: String, default: '' },
     businessAddress: { type: String, default: '' },
     businessPhone:   { type: String, default: '' },
     businessEmail:   { type: String, default: '' },
-    // Admin can approve/suspend a business owner account
+    // Admin sets this to true after verifying the business
     verified:        { type: Boolean, default: false },
     suspendedAt:     { type: Date,    default: null },
   },
@@ -93,7 +93,12 @@ const userSchema = new mongoose.Schema({
     default: null
   },
 
-  // Used for "Google sign-up verification code" flow
+  // Email verification fields
+  emailVerified: { type: Boolean, default: true },
+  emailVerificationCode: { type: String, default: null },
+  emailVerificationExpiresAt: { type: Date, default: null },
+
+  // Verification fields for Google sign-up flow
   googleEmailVerified: {
     type: Boolean,
     default: true
@@ -133,8 +138,8 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-  // --- ADD THIS BLOCK FOR WALLET & PENALTY SYSTEM ---
-  walletBalance: {
+//wallet
+   walletBalance: {
     type: Number,
     default: 0
   },
@@ -162,7 +167,6 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
-  // --- END ADD ---
 }, {
   timestamps: true
 });
@@ -171,17 +175,14 @@ const userSchema = new mongoose.Schema({
 userSchema.pre('save', function(next) {
   const user = this;
   
-  // Skip password hashing for OAuth users
+  // Skip hashing for Google users or if password didn't change
   if (user.authMethod === 'google' || !user.isModified('password')) {
     return next();
   }
-  
-  // Only hash if password is modified and exists
   if (!user.password) {
     return next();
   }
-  
-  // Generate salt and hash
+  // Hash the password before saving
   bcrypt.genSalt(10, function(err, salt) {
     if (err) {
       return next(err);
@@ -200,7 +201,7 @@ userSchema.pre('save', function(next) {
 // Compare password method
 userSchema.methods.comparePassword = async function(candidatePassword) {
   try {
-    // If user registered with Google, they don't have a password
+    // Google users don't have a password
     if (!this.password) {
       return false;
     }
@@ -229,22 +230,15 @@ userSchema.methods.addFailedCheckin = async function() {
   await this.save();
 };
 
-// Bug Task-3: canonical wallet mutation. Always use this helper instead of
-// reading walletBalance + saving — that pattern races and corrupts the ledger.
-// Returns the updated user document.
-//
-//   amount: positive number (the absolute value of the change)
-//   type:   'credit' | 'debit'
-//   description: human-readable transaction reason
+
+
 userSchema.statics.applyWalletDelta = async function(userId, { amount, type, description }) {
   if (!userId) throw new Error('userId is required');
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('amount must be a positive number');
   if (!['credit', 'debit'].includes(type)) throw new Error('type must be credit or debit');
   const delta = type === 'credit' ? amount : -amount;
 
-  // Single atomic findOneAndUpdate: balance and transaction log move together.
-  // For debits we additionally guard with $gte so an overdraft is rejected at
-  // the DB level rather than only in JS.
+ 
   const filter = type === 'debit'
     ? { _id: userId, walletBalance: { $gte: amount } }
     : { _id: userId };
@@ -270,7 +264,7 @@ userSchema.statics.applyWalletDelta = async function(userId, { amount, type, des
   return updated;
 };
 
-// Keep Google ID uniqueness only for real (non-null) values.
+// Unique index on googleId — sparse so null values (email users) are ignored
 userSchema.index(
   { googleId: 1 },
   { unique: true, partialFilterExpression: { googleId: { $type: 'string' } } }
