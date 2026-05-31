@@ -148,16 +148,13 @@ exports.checkIn = async (req, res) => {
 
     const reservationId = parsedData.reservationId;
 
-    // BUG-RACE1: TOCTOU — two concurrent scans for the same QR both read
-    // status='reserved' and both proceed to check-in. Fix: use findOneAndUpdate
-    // with a status filter so only one caller wins. The loser gets null.
+   
     const now = new Date();
 
     // Pre-fetch just for ownership check (no state mutation yet).
     const preCheck = await Reservation.findById(reservationId).select('user status lifecycleStage isExpired arrivalConfirmedUntil scheduledArrival reservationTime duration quantity');
     if (!preCheck) return res.status(404).json({ success: false, message: 'Reservation not found' });
 
-    // Bug C2: enforce ownership; only the owner or an admin may check in.
     if (preCheck.user.toString() !== req.user.id && req.user.userType !== 'admin') {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
@@ -246,10 +243,9 @@ exports.handleScan = async (req, res) => {
     const reservation = await Reservation.findById(reservationId).populate('parkingSpot');
     if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
 
-    // BUG-M1: pass already-verified payload so checkIn skips a second verifyQrPayload call.
     req._parsedQr = parsedData;
 
-    // ROUTING: If not checked in → Check-In. If already checked in → Check-Out.
+   // If not checked in → Check-In. If already checked in → Check-Out.
     if (reservation.status === 'reserved' || (reservation.status === 'pending' && reservation.paymentStatus === 'completed')) {
       return exports.checkIn(req, res);
     } else if (reservation.status === 'checked-in' || reservation.status === 'overstay') {
@@ -275,12 +271,10 @@ exports.checkOut = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid check-out request' });
     }
 
-    // Bug C2: enforce ownership so users cannot check out other people's reservations.
     if (reservation.user.toString() !== req.user.id && req.user.userType !== 'admin') {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    // Bug H2: use the canonical billing calculator so user-checkout and
     // admin-checkout cannot diverge.
     const checkOutTime = new Date();
     let billing;
@@ -318,17 +312,12 @@ exports.checkOut = async (req, res) => {
     await spot.save();
     await reservation.save();
     if (billing.overstayCharge > 0) {
-      await User.applyWalletDelta(reservation.user, {
-        amount: billing.overstayCharge,
-        type: 'debit',
-        description: `Overstay charge for reservation ${reservation._id}`,
-      });
-
+      await User.findByIdAndUpdate(reservation.user, { $inc: { overstayDebt: billing.overstayCharge } });
       try {
         await notificationService.sendNotification(
           reservation.user,
           'Overstay Charge',
-          `You parked for ${billing.actualMinutes} mins. An overstay charge of NPR ${billing.overstayCharge} has been added to your account.`,
+          `You parked for ${billing.actualMinutes} mins. An overstay debt of NPR ${billing.overstayCharge} has been recorded. Please contact the parking office to settle.`,
           'overstay_alert',
           { overstayCharge: billing.overstayCharge }
         );
@@ -509,18 +498,14 @@ exports.adminCheckOut = async (req, res) => {
 
     // Fire-and-forget after response is flushed.
     setImmediate(async () => {
-      // Bug C4 alignment: track overstay debt on admin path.
       if (billing.overstayCharge > 0) {
-       try {
-         await User.applyWalletDelta(reservation.user._id, {
-           amount: billing.overstayCharge,
-           type: 'debit',
-           description: `Admin check-out overstay charge for reservation ${reservation._id}`,
-         });
-       } catch (e) {
-         logger.error('admin_checkout_debt_update_failed', { message: e.message });
-       }
-      }      try { await recalculateUserBehavior(reservation.user._id); } catch (e) { logger.error('admin_checkout_behavior_failed', { message: e.message }); }
+        try {
+          await User.findByIdAndUpdate(reservation.user._id, { $inc: { overstayDebt: billing.overstayCharge } });
+        } catch (e) {
+          logger.error('admin_checkout_debt_update_failed', { message: e.message });
+        }
+      }
+      try { await recalculateUserBehavior(reservation.user._id); } catch (e) { logger.error('admin_checkout_behavior_failed', { message: e.message }); }
       try {
         const msg = billing.overstayCharge > 0
           ? `Admin has checked you out. You parked for ${billing.actualMinutes} min (${billing.overstayMinutes} min overstay). Overstay charge: NPR ${billing.overstayCharge}. Total: NPR ${billing.finalAmount}.`

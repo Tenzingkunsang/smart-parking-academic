@@ -18,7 +18,6 @@ const REFRESH_EXPIRES_DAYS = Number(process.env.JWT_REFRESH_EXPIRES_DAYS || 30);
 const MAX_LOGIN_ATTEMPTS = Number(process.env.MAX_LOGIN_ATTEMPTS || 5);
 const LOCK_TIME_MS = Number(process.env.ACCOUNT_LOCK_MS || 15 * 60 * 1000);
 
-// ─── FIX #2: Throw if JWT_SECRET missing — no hardcoded fallback ─────────────
 const getJwtSecret = () => {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -31,7 +30,6 @@ const generateAccessToken = (id) =>
   jwt.sign({ id, type: 'access' }, getJwtSecret(), {
     expiresIn: ACCESS_EXPIRES_IN,
   });
-// ────────────────────────────────────────────────────────────────────────────
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
@@ -105,6 +103,9 @@ router.post(
         return res.status(400).json({ success: false, message: 'User already exists' });
       }
 
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const verificationExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
+
       const user = await User.create({
         name,
         email: normalizedEmail,
@@ -113,25 +114,29 @@ router.post(
         vehicleNumber: resolvedType === 'user' ? normalizedVehicle : '',
         userType: resolvedType,
         authMethod: 'email',
+        emailVerified: false,
+        emailVerificationCode: verificationCode,
+        emailVerificationExpiresAt: verificationExpiresAt,
       });
 
-      const refreshPayload = await generateRefreshToken(user, req);
+      const sent = await emailService.sendEmail(
+        normalizedEmail,
+        'Verify your SmartPark account',
+        `Your SmartPark verification code is: ${verificationCode}\n\nThis code expires in 15 minutes.\n\n- SmartPark Team`
+      );
+
+      if (!sent) {
+        await User.deleteOne({ _id: user._id });
+        return res.status(400).json({ success: false, message: 'Could not send verification email. Please check your email address and try again.' });
+      }
+
       await logAuthEvent({ userId: user._id, event: 'register_success', req });
 
       res.status(201).json({
         success: true,
-        message: 'User registered successfully',
-        token: generateAccessToken(user._id),
-        refreshToken: refreshPayload.token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          vehicleNumber: user.vehicleNumber,
-          userType: user.userType,
-          authMethod: user.authMethod,
-        },
+        message: 'Registration successful. Please check your email for a 6-digit verification code.',
+        verificationRequired: true,
+        email: normalizedEmail,
       });
     } catch (error) {
       logger.error('auth_register_failed', { message: error.message });
@@ -151,6 +156,57 @@ router.post(
     }
   }
 );
+
+// @route   POST /api/auth/verify-email
+router.post('/verify-email', async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ success: false, message: 'Email and code are required' });
+    const user = await User.findOne({ email: email.trim().toLowerCase(), authMethod: 'email' });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.emailVerified) return res.status(400).json({ success: false, message: 'Email already verified' });
+    if (!user.emailVerificationCode || user.emailVerificationCode !== code.trim()) {
+      return res.status(400).json({ success: false, message: 'Invalid verification code' });
+    }
+    if (user.emailVerificationExpiresAt && new Date() > user.emailVerificationExpiresAt) {
+      return res.status(400).json({ success: false, message: 'Verification code expired. Please request a new one.' });
+    }
+    user.emailVerified = true;
+    user.emailVerificationCode = null;
+    user.emailVerificationExpiresAt = null;
+    await user.save();
+    const refreshPayload = await generateRefreshToken(user, req);
+    res.json({
+      success: true,
+      message: 'Email verified successfully.',
+      token: generateAccessToken(user._id),
+      refreshToken: refreshPayload.token,
+      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, vehicleNumber: user.vehicleNumber, userType: user.userType, authMethod: user.authMethod },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// @route   POST /api/auth/resend-verification
+router.post('/resend-verification', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
+    const user = await User.findOne({ email: email.trim().toLowerCase(), authMethod: 'email' });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.emailVerified) return res.status(400).json({ success: false, message: 'Email already verified' });
+    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+    user.emailVerificationCode = newCode;
+    user.emailVerificationExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await user.save();
+    const sent = await emailService.sendEmail(email.trim().toLowerCase(), 'SmartPark verification code', `Your new verification code is: ${newCode}\n\nExpires in 15 minutes.\n\n- SmartPark Team`);
+    if (!sent) return res.status(500).json({ success: false, message: 'Failed to send email' });
+    res.json({ success: true, message: 'New verification code sent.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
 
 // @route   POST /api/auth/login
 router.post(
@@ -174,6 +230,15 @@ router.post(
         return res.status(401).json({
           success: false,
           message: 'This account uses Google sign-in. Please login with Google.',
+        });
+      }
+
+      if (user.emailVerified === false) {
+        return res.status(403).json({
+          success: false,
+          message: 'Please verify your email before logging in. Check your inbox for the verification code.',
+          verificationRequired: true,
+          email: normalizedEmail,
         });
       }
 

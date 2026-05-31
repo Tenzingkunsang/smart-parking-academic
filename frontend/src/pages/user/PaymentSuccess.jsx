@@ -16,9 +16,8 @@ const PaymentSuccess = () => {
         const token = getAuthToken();
         const pidx = searchParams.get('pidx');
         const reservationId = searchParams.get('reservationId') || searchParams.get('purchase_order_id');
+        const paymentType = searchParams.get('type'); // 'overstay' or undefined (parking)
 
-        // Khalti GET redirect sends ?error=... when payment fails or is incomplete.
-        // Show that message directly instead of "Callback data integrity violation".
         const callbackError = searchParams.get('error');
         if (callbackError) {
           setError(decodeURIComponent(callbackError));
@@ -35,7 +34,12 @@ const PaymentSuccess = () => {
           return;
         }
 
-        const response = await fetch(`${API_BASE}/payments/khalti/verify`, {
+        // Route to correct verify endpoint based on payment type
+        const endpoint = paymentType === 'overstay'
+          ? `${API_BASE}/reservations/${reservationId}/verify-overstay-khalti`
+          : `${API_BASE}/payments/khalti/verify`;
+
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -50,14 +54,12 @@ const PaymentSuccess = () => {
           return;
         }
 
-        // BUG-H1: store amount directly — no paisa conversion.
         setPaymentData({
           transaction_id: data.data?.transactionId || 'N/A',
           total_amount: data.data?.amount || 0,
           status: 'Verified'
         });
       } catch (err) {
-        // BUG-L4: plain language error instead of technical jargon.
         setError('Something went wrong while verifying your payment. Please check your bookings or contact support.');
       } finally {
         setVerifying(false);

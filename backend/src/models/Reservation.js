@@ -107,17 +107,17 @@ const reservationSchema = new mongoose.Schema({
     overstayCharge: { type: Number, default: 0 },
     overstayDebt: { type: Number, default: 0 },
     overstayPaid: { type: Boolean, default: false },
-    // Bug NEW-2: schema was silently dropping the paid timestamp.
-    overstayPaidAt: { type: Date, default: null }
+    overstayPaidAt: { type: Date, default: null },
+    khaltiPidx: { type: String, default: null },
+    khaltiTransactionId: { type: String, default: null }
   },
 
-  // Bug NEW-4: vehicle plate now flows end-to-end. Stored per-reservation so
-  // historical receipts and admin scanning UIs know which vehicle was billed.
   vehiclePlate: {
     type: String,
     trim: true,
     uppercase: true,
     default: ''
+
   },
   
   noShowInfo: {
@@ -126,6 +126,7 @@ const reservationSchema = new mongoose.Schema({
       type: String,
       enum: ['grace_period_expired', 'user_cancelled', 'admin_cancelled'],
       sparse: true
+
     }
   },
   
@@ -133,7 +134,7 @@ const reservationSchema = new mongoose.Schema({
     penaltyPercent: { type: Number, default: 30 },
     penaltyAmount: { type: Number, default: 0 },
     refundAmount: { type: Number, default: 0 },
-    refundMethod: { type: String, enum: ['khalti', 'wallet', 'none'], default: 'wallet' },
+    refundMethod: { type: String, enum: ['khalti', 'wallet', 'none'], default: 'none' },
     walletCreditedAt: Date,
     khaltiRefundId: { type: String, sparse: true },
     refundStatus: { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'pending' },
@@ -141,8 +142,6 @@ const reservationSchema = new mongoose.Schema({
   },
   
   qrCodeData: { type: String, sparse: true, index: true },
-  // Bug MED-3: HMAC-signed reservation token embedded in the QR. Persisted so
-  // admins can re-issue the same image without losing the signature.
   qrToken: { type: String, default: null },
   
   scheduledJobs: {

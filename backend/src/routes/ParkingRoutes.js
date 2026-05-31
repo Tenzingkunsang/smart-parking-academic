@@ -28,9 +28,7 @@ function stripInternalFields(spots) {
   return obj;
 }
 
-// ─── BUG-C7 helper ────────────────────────────────────────────────────────────
-// Checks whether the request carries a valid Bearer token WITHOUT throwing —
-// used to decide whether to redact internal schema fields.
+
 function isAuthenticated(req) {
   const auth = req.headers.authorization;
   return !!(auth && auth.startsWith('Bearer ') && auth.slice(7).length > 10);
@@ -68,7 +66,6 @@ router.get('/spots', async (req, res) => {
 router.get('/available', async (req, res) => {
   try {
     const spots = await getOrSet('spots:available', 15, async () => {
-      // Bug H4: use actual capacity counter instead of legacy isOccupied/isReserved flags.
       const raw = await ParkingSpot.find({ isActive: true, availableSpaces: { $gt: 0 } }).sort('spotNumber');
       return raw.map((s) => s.toObject({ virtuals: true }));
     });

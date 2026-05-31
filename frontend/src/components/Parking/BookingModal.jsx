@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Calendar, X, CreditCard, ShieldCheck, Zap, Info, Loader2, ArrowRight, User } from 'lucide-react';
+import { MapPin, Clock, Calendar, X, CreditCard, ShieldCheck, Zap, Info, Loader2, ArrowRight, User, AlertTriangle } from 'lucide-react';
 
 const PLATE_KEY = 'vehiclePlate';
 
-// Bug NEW-3: <input type="datetime-local"> expects LOCAL time. Building the value
-// from .toISOString() emits UTC, so users in non-UTC timezones got a min attribute
-// that was hours off (and could pick "valid" times in the past).
 function minArrivalValue() {
   const d = new Date(Date.now() + 5 * 60 * 1000);
   d.setSeconds(0, 0);
@@ -54,8 +51,7 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode =
   const handleFinalConfirm = async () => {
     setLoading(true);
     try {
-      // Bug M2: persist plate so the user does not retype it next booking, and pass
-      // it through to the parent so it can be saved on the reservation.
+      
       if (vehiclePlate) localStorage.setItem(PLATE_KEY, vehiclePlate);
       const scheduledArrival = new Date(arrivalValue).toISOString();
       if (mode === 'waitlist') {
@@ -180,6 +176,14 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode =
                <span className="text-2xl font-display font-black text-white">Rs. {total}</span>
             </div>
 
+            {/* Non-refund notice */}
+            <div className="flex gap-3 items-start p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
+               <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+               <p className="text-[10px] font-bold text-amber-400/80 leading-relaxed">
+                 Payment is <span className="text-amber-400">non-refundable</span> once confirmed. Ensure your details are correct before proceeding.
+               </p>
+            </div>
+
             <div className="flex gap-4 pt-2">
                <button onClick={onClose} className="flex-1 h-14 rounded-xl bg-white/[0.03] border border-white/[0.08] text-slate-500 font-display font-black text-[10px] uppercase tracking-widest hover:text-white transition-all">Cancel</button>
                <button onClick={handleReviewClick} className="flex-[2] h-14 rounded-xl bg-white text-black font-display font-black text-[10px] uppercase tracking-widest hover:bg-cyan-400 shadow-xl transition-all flex items-center justify-center gap-2">
@@ -221,6 +225,16 @@ const BookingModal = ({ spot, isOpen, onClose, onConfirm, onJoinWaitlist, mode =
                 <p className="text-[10px] leading-relaxed text-slate-500 font-medium italic">
                    System lock will initiate upon confirmation. Arrival verification required within 15 minutes of scheduled time.
                 </p>
+             </div>
+
+             <div className="p-5 rounded-2xl bg-red-500/5 border border-red-500/25 flex gap-4 items-start">
+                <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                   <p className="text-[10px] font-black uppercase tracking-widest text-red-400">Non-Refundable Payment</p>
+                   <p className="text-[10px] leading-relaxed text-red-400/70 font-medium">
+                      Once confirmed, your reservation fee of <span className="text-red-400 font-bold">Rs. {total}</span> will not be refunded under any circumstances. By proceeding, you agree to this policy.
+                   </p>
+                </div>
              </div>
 
              <div className="flex gap-4">

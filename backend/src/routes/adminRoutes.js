@@ -1,11 +1,4 @@
-/**
- * adminRoutes.js  –  REWRITTEN
- *
- * Fix applied:
- *  [6] Revenue aggregation now sums 'finalAmount' (not 'totalAmount').
- *      finalAmount = base charge + any overstay charge, set at checkout.
- *      totalAmount = pre-paid amount at booking time (never changes).
- */
+
 
 const express = require('express');
 const router  = express.Router();
@@ -24,16 +17,11 @@ const jobSchedulerService = require('../services/jobSchedulerService');
 const { protect, adminAuth } = require('../middleware/auth');
 const logger = require('../config/logger');
 
-// ... (stats route) ...
 
-// --- FEATURE 4: ADMIN RESET VIOLATIONS ---
 router.put('/users/:id/reset-violations', protect, adminAuth, userController.resetViolations);
-// --- END ADD ---
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /admin/stats
-// FIX [6]: uses $sum: '$finalAmount' for revenue
-// ─────────────────────────────────────────────────────────────────────────────
+
+
 router.get('/stats', protect, adminAuth, async (req, res) => {
   try {
     const [
@@ -322,28 +310,13 @@ router.post('/refunds/failed/:id/retry', protect, adminAuth, async (req, res) =>
     record.lastAttemptAt = new Date();
     await record.save();
 
-    try {
-      const updated = await User.applyWalletDelta(record.user, {
-        amount: record.amount,
-        type: 'credit',
-        description: `Manual retry — refund for reservation ${record.reservation}`,
-      });
-      record.status = 'resolved';
-      record.resolvedAt = new Date();
-      record.resolvedBy = req.user.id;
-      await record.save();
-      return res.json({
-        success: true,
-        message: 'Refund credited to user wallet.',
-        data: { walletBalance: updated.walletBalance },
-      });
-    } catch (retryErr) {
-      record.status = 'pending';
-      record.errorMessage = retryErr.message;
-      await record.save();
-      logger.error('refund_retry_failed', { recordId: record._id?.toString(), message: retryErr.message });
-      return res.status(500).json({ success: false, message: retryErr.message });
-    }
+    // Bookings are non-refundable — just mark the record resolved so it clears from the queue.
+    record.status = 'resolved';
+    record.resolvedAt = new Date();
+    record.resolvedBy = req.user.id;
+    record.errorMessage = 'Marked resolved by admin — refunds no longer applicable.';
+    await record.save();
+    return res.json({ success: true, message: 'Record marked as resolved.' });
   } catch (error) {
     logger.error('retry_failed_refund_error', { message: error.message });
     return res.status(500).json({ success: false, message: 'Retry failed.' });

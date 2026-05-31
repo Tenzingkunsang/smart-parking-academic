@@ -187,30 +187,11 @@ const MyReservations = () => {
     const now = new Date();
     const hoursUntil = (scheduledStart.getTime() - now.getTime()) / (1000 * 60 * 60);
     
-    let refundPercent = 0;
-    if (hoursUntil >= 24) refundPercent = 100;
-    else if (hoursUntil >= 12) refundPercent = 50;
-    else if (hoursUntil >= 2) refundPercent = 25;
-
-    const totalPaid = res.amountInfo?.totalAmount || res.totalAmount || 0;
-    const refundAmount = totalPaid * (refundPercent / 100);
-
     const result = await Swal.fire({
       title: 'Abort Allocation?',
       html: `
         <div class="text-left space-y-4 font-sans p-2">
-          <p class="text-slate-400 text-sm">Policy identified for current temporal range:</p>
-          <div class="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
-             <div class="flex justify-between text-xs font-black uppercase tracking-widest text-slate-500">
-                <span>Original Fee</span>
-                <span>Rs.${totalPaid}</span>
-             </div>
-             <div class="flex justify-between text-xs font-black uppercase tracking-widest text-emerald-400">
-                <span>Refund (${refundPercent}%)</span>
-                <span>+Rs.${refundAmount}</span>
-             </div>
-          </div>
-          <p class="text-[10px] text-slate-500 italic">Temporal window: ${hoursUntil.toFixed(1)}h remaining.</p>
+          <p class="text-slate-400 text-sm">All bookings are <strong>non-refundable</strong>. This action cannot be undone.</p>
         </div>
       `,
       icon: 'warning',
@@ -224,7 +205,6 @@ const MyReservations = () => {
     if (result.isConfirmed) {
       try {
         const token = localStorage.getItem('token');
-        // Bug M3: actually inspect the response — previously we always toasted success.
         const response = await fetch(`${API_BASE}/reservations/${res._id}/cancel`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${token}` }
@@ -232,7 +212,7 @@ const MyReservations = () => {
         if (response.status === 401) { handleAuthExpiry(); return; }
         const payload = await response.json().catch(() => ({}));
         if (response.ok && payload.success) {
-          toast.success('Permit Revoked. Wallet Updated.');
+          toast.success('Permit Revoked.');
           fetchReservations();
         } else {
           toast.error(payload.message || 'Cancellation failed.');
@@ -243,7 +223,6 @@ const MyReservations = () => {
     }
   };
 
-  // Bug M4: implement Download Receipt instead of leaving the button dead.
   const handleDownloadReceipt = (res) => {
     const lines = [
       'SmartPark — Receipt',
@@ -272,45 +251,22 @@ const MyReservations = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handlePayOverstay = async (reservationId, chargeAmount) => {
-    const confirm = await Swal.fire({
-      title: 'Pay Overstay Charge',
-      text: `Settle the overstay charge of Rs. ${chargeAmount} to enable new parking bookings?`,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: 'Yes, Settle Now',
-      cancelButtonText: 'Cancel',
-      background: '#0a0a0a',
-      color: '#fff',
-      confirmButtonColor: '#00f2ff',
-    });
-
-    if (!confirm.isConfirmed) return;
-
+  const handlePayOverstayKhalti = async (reservationId) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/reservations/${reservationId}/pay-overstay`, {
+      const response = await fetch(`${API_BASE}/reservations/${reservationId}/pay-overstay-khalti`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       });
-
-      if (response.status === 401) {
-        handleAuthExpiry();
-        return;
-      }
-
+      if (response.status === 401) { handleAuthExpiry(); return; }
       const data = await response.json();
-      if (data.success) {
-        toast.success(data.message || 'Overstay charge settled successfully!');
-        fetchReservations();
+      if (data.success && data.payment_url) {
+        window.location.href = data.payment_url;
       } else {
-        toast.error(data.message || 'Failed to settle overstay charge.');
+        toast.error(data.message || 'Failed to initiate overstay payment.');
       }
-    } catch (err) {
-      toast.error('Network error. Unable to process payment.');
+    } catch {
+      toast.error('Network error. Please retry.');
     }
   };
 
@@ -493,12 +449,12 @@ const MyReservations = () => {
                              {res.status === 'completed' && (
                                <>
                                  {res.overstayInfo?.overstayCharge > 0 && !res.overstayInfo?.overstayPaid ? (
-                                   <Button onClick={() => handlePayOverstay(res._id, res.overstayInfo.overstayCharge)} className="flex items-center justify-center gap-2 !py-3 !text-[10px] bg-amber-500 hover:bg-amber-400 text-black font-black">
-                                      <Wallet size={14} /> Settle Overstay (Rs.{res.overstayInfo.overstayCharge})
+                                   <Button onClick={() => handlePayOverstayKhalti(res._id)} className="flex items-center justify-center gap-2 !py-3 !text-[10px] bg-amber-500 hover:bg-amber-400 text-black font-black">
+                                     Pay Overstay Rs.{res.overstayInfo.overstayCharge} via Khalti
                                    </Button>
                                  ) : (
                                    <Button variant="secondary" onClick={() => handleDownloadReceipt(res)} className="flex items-center justify-center gap-2 !py-3 !text-[10px]">
-                                      <Download size={14} /> Download Receipt
+                                     <Download size={14} /> Download Receipt
                                    </Button>
                                  )}
                                </>

@@ -1,11 +1,3 @@
-/**
- * FailedRefund.js — durable record of refunds that could not be completed.
- *
- * Bug Task-6: previously a failed Khalti refund was only logged to stderr,
- * leaving the user out of pocket with no audit trail. Anything that fails inside
- * the refund flow (Khalti API error, wallet update error, transaction abort)
- * now writes a row here for an admin to retry or settle manually.
- */
 
 const mongoose = require('mongoose');
 

@@ -49,16 +49,13 @@ parkingSpotSchema.methods.bookSpace = async function(quantity = 1) {
 };
 
 parkingSpotSchema.methods.releaseSpace = async function(quantity = 1) {
-  // BUG-SPOT1: no floor guard — direct callers (not going through holdSpotAtomically)
-  // could drive reservedSpaces below 0. Clamp to 0 so counters stay sane.
+ 
   this.reservedSpaces = Math.max(0, this.reservedSpaces - quantity);
   this.availableSpaces += quantity;
   await this.save();
   return this;
 };
 
-// Used by reservation flows to keep legacy status fields consistent.
-// It updates `status`, `isReserved`, and `isOccupied`.
 parkingSpotSchema.methods.updateStatus = async function(newStatus) {
   this.status = newStatus;
 

@@ -39,7 +39,7 @@ const PaymentPage = () => {
           window.location.href = data.payment_url;
           return;
         }
-        toast.error('Khalti link failure');
+        toast.error(data.message || 'Khalti payment initiation failed.');
       } else {
         const response = await fetch(`${API_BASE}/reservations/confirm/${pendingReservationId}`, {
           method: 'POST',

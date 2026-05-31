@@ -35,7 +35,7 @@ const accentClasses = {
 const Register = () => {
   const navigate = useNavigate();
 
-  // Step 1 = role selection, Step 2 = form fields
+  // Step 1 = role selection, Step 2 = form, Step 3 = email verification
   const [step, setStep] = useState(1);
   const [selectedRole, setSelectedRole] = useState(null);
 
@@ -45,6 +45,12 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Verification step state
+  const [verifyEmail, setVerifyEmail] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -65,7 +71,10 @@ const Register = () => {
         body: JSON.stringify({ ...formData, userType: selectedRole }),
       });
       const data = await response.json();
-      if (data.success) {
+      if (data.success && data.verificationRequired) {
+        setVerifyEmail(data.email || formData.email);
+        setStep(3);
+      } else if (data.success) {
         setSuccess('Account created. Redirecting to login…');
         setTimeout(() => navigate('/login'), 2000);
       } else {
@@ -77,6 +86,89 @@ const Register = () => {
       setLoading(false);
     }
   };
+
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    setVerifyLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/auth/verify-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verifyEmail, code: verifyCode }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        localStorage.setItem('token', data.token);
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+        if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+        setSuccess('Email verified! Taking you to the app…');
+        setTimeout(() => navigate('/'), 1500);
+      } else {
+        setError(data.message || 'Invalid code');
+      }
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setResendLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verifyEmail }),
+      });
+      const data = await response.json();
+      if (data.success) setSuccess('New code sent to your email.');
+      else setError(data.message || 'Failed to resend');
+    } catch {
+      setError('Network error.');
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  // ─── STEP 3: Email verification ────────────────────────────────────────────
+  if (step === 3) {
+    return (
+      <AuthLayout title="Verify Your Email" subtitle={`Enter the 6-digit code sent to ${verifyEmail}`}>
+        {error && (
+          <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-start gap-3 text-red-400 text-xs font-bold">
+            <AlertCircle size={16} className="shrink-0 mt-0.5" /> <span>{error}</span>
+          </div>
+        )}
+        {success && (
+          <div className="mb-6 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-3 text-emerald-400 text-xs font-bold">
+            <CheckCircle2 size={16} /> <span>{success}</span>
+          </div>
+        )}
+        <form onSubmit={handleVerify} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 ml-1">Verification Code</label>
+            <input
+              type="text" inputMode="numeric" maxLength={6}
+              value={verifyCode} onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
+              required placeholder="000000"
+              className="w-full h-14 bg-white/[0.03] border border-white/[0.08] rounded-2xl px-6 text-2xl font-black text-white text-center tracking-[0.4em] focus:outline-none focus:border-cyan-400 transition-all"
+            />
+          </div>
+          <Button type="submit" disabled={verifyLoading || verifyCode.length !== 6} className="w-full !py-4 flex items-center justify-center gap-3">
+            {verifyLoading ? <Loader2 className="animate-spin" size={20} /> : 'Verify Email'}
+          </Button>
+        </form>
+        <div className="mt-6 text-center">
+          <button onClick={handleResend} disabled={resendLoading} className="text-xs text-slate-500 hover:text-cyan-400 transition-colors font-bold">
+            {resendLoading ? 'Sending…' : 'Resend code'}
+          </button>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   const isBusinessOwner = selectedRole === 'business_owner';
 

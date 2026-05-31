@@ -7,11 +7,8 @@ const { body } = require('express-validator');
 const validateRequest = require('../middleware/validateRequest');
 const logger = require('../config/logger');
 
-// Bug C3: hash reset tokens at rest. We email the raw token but store sha256(token)
-// so a DB leak does not allow account takeover.
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
-// Bug C3: rate-limit reset endpoints to slow brute-force / spam.
 const resetRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -84,7 +81,6 @@ router.post('/reset-password/:token', resetRateLimit, [body('password').isLength
       });
     }
 
-    // Bug C3: look up by hashed token so the DB never stores raw tokens.
     const user = await User.findOne({
       resetPasswordToken: hashToken(token),
       resetPasswordExpire: { $gt: Date.now() }

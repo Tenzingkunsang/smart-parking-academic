@@ -90,6 +90,7 @@ jobs:
             EMAIL_USER=secretref:email-user
             EMAIL_PASS=secretref:email-pass
             QR_ALLOW_LEGACY=false
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
 
       # ── Frontend Container App ───────────────────────────────────────────────
       - name: Deploy frontend

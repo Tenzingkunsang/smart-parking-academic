@@ -7,7 +7,6 @@ const {
 } = require('../controllers/adminAnalyticsController');
 const { protect, adminAuth } = require('../middleware/auth');
 
-// Bug HIGH-3: every admin analytics endpoint must require admin role. No fallback.
 router.get('/peak-demand', protect, adminAuth, getPeakDemand);
 router.get('/insights', protect, adminAuth, getSmartInsights);
 router.get('/system-status', protect, adminAuth, getSystemStatus);

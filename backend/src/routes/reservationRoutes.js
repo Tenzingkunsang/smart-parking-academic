@@ -24,9 +24,9 @@ const WaitlistEntry       = require('../models/WaitlistEntry');
 const jobSchedulerService = require('../services/jobSchedulerService');
 const { holdSpotAtomically, releaseReservedSpotAndPromote } = require('../services/reservationLifecycleService');
 const { signQrPayload, verifyQrPayload } = require('../utils/qrSecurity');
-const { withTransaction } = require('../utils/withTransaction');
-const FailedRefund = require('../models/FailedRefund');
 const { recalculateUserBehavior } = require('../services/userBehaviorService');
+const { withTransaction } = require('../utils/withTransaction');
+const khaltiService = require('../services/khaltiService');
 const reservationController = require('../controllers/reservationController');
 const { protect, adminAuth } = require('../middleware/auth');
 const logger = require('../config/logger');
@@ -480,131 +480,24 @@ router.put(
         return res.status(400).json({ success: false, message: 'Cannot cancel this reservation' });
       }
 
-      // --- FEATURE 5: WALLET REFUND CALCULATION ---
-      const scheduledStart = new Date(reservation.scheduledArrival || reservation.reservationTime);
-      const now = new Date();
-      const hoursUntilBooking = (scheduledStart.getTime() - now.getTime()) / (1000 * 60 * 60);
+      reservation.status = 'cancelled';
+      reservation.lifecycleStage = 'cancelled';
+      reservation.refundInfo = { refundAmount: 0, refundStatus: 'completed' };
+      await reservation.save();
 
-      let refundAmount = 0;
-      let refundPercentage = 0;
-      const totalPaid = reservation.amountInfo?.totalAmount || 0;
+      const qty = reservation.quantity || 1;
+      await ParkingSpot.updateOne(
+        { _id: reservation.parkingSpot._id },
+        [{ $set: {
+          availableSpaces: { $add: ['$availableSpaces', qty] },
+          reservedSpaces:  { $max: [0, { $subtract: ['$reservedSpaces', qty] }] },
+        }}]
+      );
 
-      if (hoursUntilBooking >= 24) {
-        refundPercentage = 100;
-        refundAmount = totalPaid;
-      } else if (hoursUntilBooking >= 12) {
-        refundPercentage = 50;
-        refundAmount = totalPaid * 0.5;
-      } else if (hoursUntilBooking >= 2) {
-        refundPercentage = 25;
-        refundAmount = totalPaid * 0.25;
-      }
-
-      // Bug H3 + HIGH-2 + MED-1 + Task-6: wallet credit + reservation update +
-      // spot release run as one transaction on a replica set, and fall back to
-      // a best-effort sequence on standalone Mongo. If anything in the refund
-      // path fails, the attempt is persisted to FailedRefund so an admin can
-      // retry manually rather than the user losing money silently.
-      try {
-        await withTransaction(async (session) => {
-        const sessionOpt = session ? { session } : {};
-        if (refundAmount > 0) {
-          // Bug Task-3: one atomic op for balance + ledger via the canonical helper.
-          // When running inside a real transaction we use the raw updateOne so we
-          // can pass the session; outside a transaction we delegate to the helper.
-          if (session) {
-            await User.updateOne(
-              { _id: req.user.id },
-              {
-                $inc: { walletBalance: refundAmount },
-                $push: {
-                  walletTransactions: {
-                    amount: refundAmount,
-                    type: 'credit',
-                    description: `Cancellation Refund (${refundPercentage}%) for Node #${reservation.parkingSpot.spotNumber}`,
-                    date: new Date(),
-                  },
-                },
-              },
-              { session }
-            );
-          } else {
-            await User.applyWalletDelta(req.user.id, {
-              amount: refundAmount,
-              type: 'credit',
-              description: `Cancellation Refund (${refundPercentage}%) for Node #${reservation.parkingSpot.spotNumber}`,
-            });
-          }
-        }
-
-        reservation.status = 'cancelled';
-        reservation.lifecycleStage = 'cancelled';
-        reservation.refundInfo = {
-          ...reservation.refundInfo,
-          refundAmount,
-          penaltyPercent: 100 - refundPercentage,
-          refundStatus: 'completed',
-          walletCreditedAt: new Date(),
-        };
-        await reservation.save(sessionOpt);
-
-        const qty = reservation.quantity || 1;
-        // Use aggregation pipeline so reservedSpaces is floor-clamped at 0.
-        // Plain $inc could drive the counter negative if called twice on the same spot.
-        await ParkingSpot.updateOne(
-          { _id: reservation.parkingSpot._id },
-          [{ $set: {
-            availableSpaces: { $add: ['$availableSpaces', qty] },
-            reservedSpaces:  { $max: [0, { $subtract: ['$reservedSpaces', qty] }] },
-          }}],
-          sessionOpt
-        );
-        });
-      } catch (refundErr) {
-        // Bug Task-6: persist any failure inside the refund transaction so an
-        // admin can retry. Logged AND queued — we never just swallow.
-        logger.error('cancel_refund_failed', {
-          reservationId: reservation._id?.toString(),
-          message: refundErr.message,
-        });
-        try {
-          await FailedRefund.create({
-            reservation: reservation._id,
-            user: req.user.id,
-            amount: refundAmount,
-            refundPercent: refundPercentage,
-            method: reservation.paymentMethod === 'khalti' ? 'khalti' : 'wallet',
-            reason: 'cancellation',
-            errorMessage: refundErr.message,
-            errorCode: refundErr.code ? String(refundErr.code) : '',
-            status: 'pending',
-          });
-        } catch (recordErr) {
-          logger.error('failed_refund_record_failed', {
-            reservationId: reservation._id?.toString(),
-            message: recordErr.message,
-          });
-        }
-        return res.status(500).json({
-          success: false,
-          message: 'Refund could not be processed. Our team has been alerted and will follow up.',
-        });
-      }
-
-      // Post-commit side effects (waitlist promotion + jobs). Status flag refresh
-      // is handled separately because waitlist promotion can fire socket events.
       await releaseReservedSpotAndPromote({ reservation, releaseReason: 'user_cancelled', skipCounters: true });
       await jobSchedulerService.cancelReservationJobs(reservation._id);
-      
-      // BUG-M2: only mention the wallet refund when payment was actually completed.
-      const cancelMsg = reservation.paymentStatus === 'completed'
-        ? 'Reservation cancelled. Refund credited to wallet.'
-        : 'Reservation cancelled.';
-      res.json({
-        success: true,
-        message: cancelMsg,
-        data: { refundAmount, refundPercentage }
-      });
+
+      res.json({ success: true, message: 'Reservation cancelled. No refund is applicable.' });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -667,54 +560,125 @@ router.delete(
   }
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /reservations/:id/pay-overstay
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── POST /:id/pay-overstay-khalti — initiate Khalti payment for overstay debt ─
 router.post(
-  '/:id/pay-overstay',
+  '/:id/pay-overstay-khalti',
   protect,
   [param('id').isMongoId().withMessage('Invalid reservation ID')],
   async (req, res) => {
     if (!validate(req, res)) return;
     try {
-      const reservation = await Reservation.findById(req.params.id);
+      const reservation = await Reservation.findById(req.params.id).populate('parkingSpot');
       if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
 
-      // ─── FIX #8: Authorization ─────────────────────────────────────────
       if (reservation.user.toString() !== req.user.id) {
         return res.status(403).json({ success: false, message: 'Not authorized' });
       }
 
       const overstayCharge = reservation.overstayInfo?.overstayCharge || 0;
       if (overstayCharge <= 0) {
-        return res.status(400).json({ success: false, message: 'No overstay charge on this reservation' });
+        return res.status(400).json({ success: false, message: 'No overstay charge on this reservation.' });
+      }
+      if (reservation.overstayInfo?.overstayPaid) {
+        return res.status(400).json({ success: false, message: 'Overstay charge already paid.' });
       }
 
-      // Bug C4: previously zeroed the whole debt, letting one payment clear multiple
-      // unpaid overstays. Decrement by this reservation's charge instead, and idempotently
-      // mark this one paid so re-clicks do not double-debit.
-      if (reservation.overstayInfo.overstayPaid) {
-        return res.status(400).json({ success: false, message: 'This overstay charge has already been settled.' });
+      const user = await User.findById(req.user.id);
+      const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
+      let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const candidate = req.get('origin') || (() => { try { return new URL(req.get('referer') || '').origin; } catch { return ''; } })();
+      if (candidate && allowedOrigins.includes(candidate)) frontendUrl = candidate;
+
+      const payload = {
+        return_url: `${frontendUrl}/payment-success?type=overstay&reservationId=${reservation._id}`,
+        website_url: frontendUrl,
+        // CRITICAL: use overstayCharge only — NOT the parking fee
+        amount: Math.round(overstayCharge * 100),
+        purchase_order_id: reservation._id.toString(),
+        purchase_order_name: `Overstay Charge - Spot #${reservation.parkingSpot.spotNumber}`,
+        customer_info: {
+          name: user.name || 'Customer',
+          email: user.email,
+          phone: user.phone || '9800000000',
+        },
+      };
+
+      const result = await khaltiService.initiatePayment(payload);
+      if (!result.success) {
+        return res.status(400).json({ success: false, message: result.message || 'Khalti initiation failed.' });
+      }
+
+      reservation.overstayInfo.khaltiPidx = result.data.pidx;
+      await reservation.save();
+
+      return res.json({ success: true, payment_url: result.data.payment_url, pidx: result.data.pidx });
+    } catch (error) {
+      logger.error('pay_overstay_khalti_initiate_error', { message: error.message });
+      return res.status(500).json({ success: false, message: 'Server error initiating overstay payment.' });
+    }
+  }
+);
+
+// ─── POST /:id/verify-overstay-khalti — verify Khalti and clear overstay debt ─
+router.post(
+  '/:id/verify-overstay-khalti',
+  protect,
+  [param('id').isMongoId().withMessage('Invalid reservation ID')],
+  async (req, res) => {
+    if (!validate(req, res)) return;
+    try {
+      const { pidx } = req.body;
+      const reservation = await Reservation.findById(req.params.id);
+      if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
+
+      if (reservation.user.toString() !== req.user.id) {
+        return res.status(403).json({ success: false, message: 'Not authorized' });
+      }
+
+      if (reservation.overstayInfo?.overstayPaid) {
+        return res.json({ success: true, message: 'Overstay already settled.', data: { alreadyPaid: true } });
+      }
+
+      const effectivePidx = pidx || reservation.overstayInfo?.khaltiPidx;
+      if (!effectivePidx) {
+        return res.status(400).json({ success: false, message: 'No payment transaction found for this overstay.' });
+      }
+
+      const verification = await khaltiService.verifyPayment(effectivePidx);
+      if (!verification.success) {
+        return res.status(400).json({
+          success: false,
+          message: verification.message || 'Payment not completed.',
+        });
+      }
+
+      // Confirm Khalti returned the correct overstay amount
+      const expectedNPR = reservation.overstayInfo?.overstayCharge || 0;
+      const returnedNPR = verification.data?.totalAmountNPR;
+      if (returnedNPR && returnedNPR !== expectedNPR) {
+        logger.error('overstay_khalti_amount_mismatch', { reservationId: reservation._id, expected: expectedNPR, returned: returnedNPR });
+        return res.status(400).json({ success: false, message: 'Payment amount mismatch. Contact support.' });
       }
 
       reservation.overstayInfo.overstayPaid = true;
       reservation.overstayInfo.overstayPaidAt = new Date();
+      reservation.overstayInfo.khaltiTransactionId = verification.data?.transactionId || null;
       await reservation.save();
 
-      // Atomic decrement, clamped at 0, in a single DB round-trip.
+      // Decrement overstay debt on user, clamped at 0
       await User.updateOne(
         { _id: req.user.id },
-        [{ $set: { overstayDebt: { $max: [0, { $subtract: [{ $ifNull: ['$overstayDebt', 0] }, overstayCharge] }] } } }]
+        [{ $set: { overstayDebt: { $max: [0, { $subtract: [{ $ifNull: ['$overstayDebt', 0] }, expectedNPR] }] } } }]
       );
 
-      const updatedUser = await User.findById(req.user.id).select('overstayDebt');
-      res.json({
+      return res.json({
         success: true,
-        message: 'Overstay charge settled.',
-        data: { remainingDebt: updatedUser?.overstayDebt || 0 },
+        message: 'Overstay charge settled via Khalti.',
+        data: { transactionId: verification.data?.transactionId, amount: expectedNPR },
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+      logger.error('verify_overstay_khalti_error', { message: error.message });
+      return res.status(500).json({ success: false, message: 'Server error verifying overstay payment.' });
     }
   }
 );

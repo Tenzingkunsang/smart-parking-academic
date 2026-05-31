@@ -245,6 +245,21 @@ router.post(
         });
       }
 
+      // Validate Khalti-returned amount matches expected reservation amount.
+      // Prevents accepting a payment where user manipulated the amount on Khalti's side.
+      const expectedNPR = Math.round(
+        reservation.amountInfo?.totalAmount ||
+        Math.ceil(reservation.duration / 60) * reservation.parkingSpot.price * (reservation.quantity || 1)
+      );
+      const returnedNPR = verification.data?.totalAmountNPR;
+      if (returnedNPR && returnedNPR !== expectedNPR) {
+        logger.error('khalti_amount_mismatch', { pidx, expected: expectedNPR, returned: returnedNPR });
+        return res.status(400).json({
+          success: false,
+          message: 'Payment amount mismatch. Please contact support.',
+        });
+      }
+
       // ─── FIX #9: Only process if still pending (prevents double processing)
       // holdSpotAtomically uses a findOneAndUpdate with $gte check, so it's
       // atomic — concurrent requests for the same spot will get a "no longer
@@ -308,95 +323,6 @@ router.post(
         success: false,
         message: 'Server error during payment verification. If you were charged, please contact support with your transaction ID.',
       });
-    }
-  }
-);
-
-// ─── GET /khalti/verify ──────────────────────────────────────────────────────
-// Supports standard browser redirects from Khalti's gateway, direct visits,
-// or direct link verification, preventing ROUTE_NOT_FOUND (404) errors.
-router.get(
-  '/khalti/verify',
-  paymentRateLimit,
-  async (req, res) => {
-    const pidx = req.query.pidx;
-    const reservationId = req.query.purchase_order_id || req.query.reservationId;
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-
-    if (!pidx || !reservationId) {
-      return res.redirect(`${frontendUrl}/payment-success?error=${encodeURIComponent('Callback data integrity violation. Missing transaction pidx or reservation ID.')}`);
-    }
-
-    try {
-      let reservation = await Reservation.findById(reservationId).populate('parkingSpot');
-      if (!reservation) {
-        return res.redirect(`${frontendUrl}/payment-success?error=${encodeURIComponent('Reservation not found.')}`);
-      }
-
-      const verification = await khaltiService.verifyPayment(pidx);
-
-      if (!verification.success) {
-        const TRANSIENT = ['Initiated', 'Pending'];
-        const isTransient = TRANSIENT.includes(verification.status);
-        if (!isTransient) {
-          reservation.paymentStatus = 'failed';
-          reservation.paymentMethod = 'khalti';
-          await reservation.save();
-        }
-        const errMsg = isTransient
-          ? `Payment not yet complete (status: "${verification.status}"). Please wait and retry.`
-          : (verification.message || 'Payment verification failed.');
-        return res.redirect(`${frontendUrl}/payment-success?reservationId=${reservationId}&error=${encodeURIComponent(errMsg)}`);
-      }
-
-      if (reservation.status === 'pending') {
-        const held = await holdSpotAtomically({ reservationId, paymentMethod: 'khalti' });
-        const parkingSpot = held.parkingSpot;
-        reservation = held.reservation;
-        reservation.paymentReference = verification.data?.transactionId || pidx;
-        reservation.khaltiTransactionId = verification.data?.transactionId || null;
-
-        // Bug MED-3: signed QR token to prevent forgery and limit replay window.
-        const qrToken = signQrPayload({
-          reservationId: reservation._id.toString(),
-          spotNumber: reservation.parkingSpot.spotNumber,
-          location: reservation.parkingSpot.locationName,
-        });
-        reservation.qrCodeData = await QRCode.toDataURL(qrToken);
-        reservation.qrToken = qrToken;
-        await reservation.save();
-        await jobSchedulerService.scheduleReservationJobs(reservation);
-
-        socketService.notifySpotStatusChanged({
-          spotId: parkingSpot._id,
-          spotNumber: parkingSpot.spotNumber,
-          status: 'reserved',
-          locationId: parkingSpot.location,
-          availableSpaces: parkingSpot.availableSpaces,
-          reservedSpaces: parkingSpot.reservedSpaces,
-        });
-
-        await notificationService.notifyPaymentConfirmation(
-          reservation.user.toString(),
-          reservation.amountInfo?.totalAmount || 0,
-          parkingSpot.spotNumber,
-          reservation.duration,
-          reservation.paymentReference
-        );
-
-        socketService.notifyAdminNewBooking({
-          bookingId: reservation._id,
-          spotNumber: parkingSpot.spotNumber,
-          userId: reservation.user.toString(),
-          amount: reservation.amountInfo?.totalAmount || 0,
-        });
-      }
-
-      return res.redirect(`${frontendUrl}/payment-success?reservationId=${reservationId}&pidx=${pidx}`);
-
-    } catch (error) {
-      logger.error('payment_verify_get_error', { message: error.message });
-      return res.redirect(`${frontendUrl}/payment-success?error=${encodeURIComponent('Server error during payment verification callback.')}`);
     }
   }
 );
