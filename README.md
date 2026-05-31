@@ -5,7 +5,6 @@ This is a full-stack smart parking reservation web application. It lets users fi
 ## Tech Stack
 - **Backend:** Node.js, Express, MongoDB (Mongoose), Socket.IO (for real-time spot updates), Khalti Payment Gateway, JWT (for authentication).
 - **Frontend:** React, Tailwind CSS, html5-qrcode (for scanning), Lucide React (icons).
-- **Security & Utilities:** Helmet, express-rate-limit, Winston Logger, Jest (testing).
 
 ---
 
@@ -18,59 +17,6 @@ This is a full-stack smart parking reservation web application. It lets users fi
 - **Admin Dashboard:** Real-time analytics, spot management, peak-hour demand heatmap, system status tracking, and the ability to retry failed refunds or reset user violations.
 - **Security Features:** Gatekeeper admin routes, brute-force protection (locks accounts for 15 minutes after 5 failed login attempts), and transaction-safe operations to prevent double-booking.
 
----
-
-## Getting Started
-
-### Prerequisites
-- Node.js installed
-- MongoDB running (supports replica sets for transaction support, but automatically falls back to standard queries if using a standalone database)
-
-### How to Run Locally
-
-1. **Set up the Backend:**
-   ```bash
-   cd backend
-   cp .env.example .env
-   # Open .env and add your MONGODB_URI, JWT_SECRET, and QR_SIGNING_SECRET
-   npm install
-   
-   # Seed database with initial parking spots and an admin account
-   node src/utils/seed.js
-   
-   # Start backend
-   npm run dev
-   ```
-
-2. **Set up the Frontend:**
-   ```bash
-   # In a new terminal tab/window
-   cd frontend
-   npm install
-   npm start
-   ```
-
-Now, open your browser and go to `http://localhost:3000`. The API will run on `http://localhost:5001/api/v1`.
-
----
-
-## Environment Variables (.env)
-Make sure to configure these in `backend/.env`:
-- `MONGODB_URI`: MongoDB connection string.
-- `JWT_SECRET`: For signing user authentication tokens.
-- `QR_SIGNING_SECRET`: For signing the check-in QR codes.
-- `CORS_ORIGIN`: Allowed origins (e.g., `http://localhost:3000`).
-- `FRONTEND_URL`: Used for password reset emails and Khalti redirects.
-
----
-
-## Running Tests
-I've written unit and integration tests to make sure everything works perfectly:
-```bash
-cd backend
-npm test                # Run all test suites
-npm run test:coverage   # Run tests with coverage report
-```
 
 ### Test Suites Included:
 - `billing.test.js`: Checks overstay calculations, grace periods, and user penalties.
