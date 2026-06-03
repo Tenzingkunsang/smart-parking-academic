@@ -31,6 +31,8 @@ function signQrPayload({ reservationId, spotNumber, location, ttlMs = DEFAULT_TT
   const body = {
     v: 1,
     reservationId: String(reservationId),
+    ...(spotNumber !== undefined && { spotNumber }),
+    ...(location !== undefined && { location }),
     iat: now,
     exp: now + ttlMs,
     nonce: crypto.randomBytes(8).toString('hex'),
